@@ -1,0 +1,13 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.taskbar{
+    background-color: rgb(235, 63, 98);
+    min-height: 100vh;
+    margin-right: 100rem;
+    text-align: left;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
