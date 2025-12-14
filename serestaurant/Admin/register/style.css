@@ -1,11 +1,10 @@
-/* Reset */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-/* Background full màn hình */
+/* Background */
 .register-page {
   min-height: 100vh;
   background: url("https://images.pexels.com/photos/31216391/pexels-photo-31216391.jpeg?cs=srgb&dl=pexels-mahmoudramadan-31216391.jpg&fm=jpg") center / cover no-repeat;
