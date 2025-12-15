@@ -5,9 +5,39 @@
 }
 
 .taskbar{
-    background-color: rgb(235, 63, 98);
+    width: 360px;
     min-height: 100vh;
-    margin-right: 100rem;
-    text-align: left;
+    background-color: rgb(235, 63, 98);
     box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    padding: 20px;
+    color: white;
+}
+
+.taskbar_banner{
+  font-size: 40px;
+  font-family: 'Brush Script MT', cursive;
+  text-align: center;
+}
+
+.taskbar_menu{
+  font-size: 20px;
+  padding-top: 100px;
+}
+
+.button{
+  display: block;
+  color: white;
+  border: none;
+  background:fixed;
+  padding: 15px 32px;
+  cursor: pointer;
+  font-size: 16px;
+  margin: 4px 2px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.taskbar_setting{
+  display: block;
+  margin-top: 250px;
 }
