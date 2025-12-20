@@ -71,24 +71,7 @@ function renderMenu() {
 }
 
 // ================================
-// 4. RENDER RESERVATION (ĐẶT CHỖ)
-// ================================
-function renderReservation() {
-  pageTitle.innerText = "Quản lý Đặt chỗ";
-
-  let html = `
-    <div class="page-header">
-      <h3>Danh sách đặt chỗ</h3>
-    </div>
-
-    <table>
-      <tr>
-        <th>Khách</th>
-        <th>SĐT</th>
-        <th>Thời gian</th>
-        <th>Số người</th>
-        <th>Trạng thái</th>
-        <th>Hành động</th>
+// 4. RENDER RESERVATION (ĐẶT sửa</th>        <th>Chỉnh sửa</th>
       </tr>
   `;
 
@@ -101,9 +84,7 @@ function renderReservation() {
         <td>${r.people}</td>
         <td>
           <span class="status pending">${r.status}</span>
-        </td>
-        <td>
-          <button class="btn-confirm">Xác nhận</button>
+           <button class="btn-confirm">Xác nhận</button>
           <button class="btn-delete">Hủy</button>
         </td>
       </tr>
