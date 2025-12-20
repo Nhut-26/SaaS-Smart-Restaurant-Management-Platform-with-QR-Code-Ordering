@@ -8,36 +8,45 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css" integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body>
-    <div class="taskbar">
-        <div class="taskbar_banner">
+    <aside class="sidebar">
+        <div class="logo">
             <h1>SE</h1>
             <h2>Restauraunt</h2>
         </div>
-        <div class="taskbar_menu">
-            <button class="button">
-                <h2>Menu</h2>
-            </button>
-            <button class="button">
-                <h2>Đặt chỗ</h2>
-            </button>
-            <button class="button">
-                <h2>Ngân sách</h2>
-            </button>
-            <button class="button">
-                <h2>Nhân viên</h2>
-            </button>
-            <button class="button">
-                <h2>Khách hàng</h2>
-            </button>
-            <button class="button">
-                <h2>Báo cáo</h2>
-            </button>
+        <ul class="menu">
+            <li class="menu-item" data-page="menu">
+                <i class="fas fa-utensils"></i> Menu
+            </li>
+            <li class="menu-item" data-page="reservation">
+                <i class="fas fa-calendar-check"></i> Đặt chỗ
+            </li>
+            <li class="menu-item" data-page="budget">
+                <i class="fas fa-wallet"></i> Ngân sách
+            </li>
+        </ul>
+        <div class="sidebar_item_setting">
+            <div class="setting-header" id="settingBtn">
+                <i class="fa-solid fa-gear"></i>
+                <span>Setting</span>
+                <i class="fa-solid fa-cheevron-down arrow"></i>
+            </div>
+            <div class="setting-dropdown" id="settingMenu">
+                <a href="http://127.0.0.1:5500/ADMIN/Login/index.html" target="_blank">Đăng nhập</a>
+                <a href="http://127.0.0.1:5500/ADMIN/register/index.html" target="_blank">Đăng ký</a>
+            </div>
         </div>
-        <div >
-            <button class="button">
-                <h2 class="taskbar_setting"> <i class="fas fa-gear"></i> Setting</h2>
-            </button>
-        </div>
-    </div>
+    </aside>
+      <div class="content-wrapper">
+
+    <header class="header">
+      <h2 id="page-title">Quản lý Menu</h2>
+      <div class="user">
+        <i class="fas fa-user-circle"></i> Admin
+      </div>
+    </header>
+
+    <section id="content" class="content"></section>
+
+    <script src="index.js"></script>
 </body>
 </html>
