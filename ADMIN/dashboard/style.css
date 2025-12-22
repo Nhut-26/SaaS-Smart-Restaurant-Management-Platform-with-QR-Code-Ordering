@@ -1,0 +1,236 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  display: flex;
+  height: 100vh;
+  background: #f4f6f8;
+  font-size: 24px;
+}
+
+.sidebar{
+    width: 360px;
+    min-height: 100vh;
+    background-color: rgb(235, 63, 98);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    padding: 20px;
+    color: white;
+}
+
+.logo{
+  font-size: 40px;
+  font-family: 'Brush Script MT', cursive;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.menu{
+  font-size: 30px;
+  padding-top: 100px;
+  list-style: none;
+}
+
+.menu-item{
+  border-radius: 6px;
+  background:fixed;
+  padding: 12px;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+.menu-item i{
+  margin-right: 10px;
+}
+
+.menu-item:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* .setting{
+  font-size: 30px;
+  margin-top: 100%;
+  cursor: pointer;
+  padding: 10px;
+  border-radius: 6px;
+  background:fixed;
+  padding: 12px;
+  margin-bottom: 6px;
+  margin-right: 10px;
+}
+
+.setting:hover{
+  background: rgba(255,255,255,0.2)
+} */
+
+.sidebar_item_setting {
+  margin-top: 100%;
+  font-size: 30px
+}
+
+.setting-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  cursor: pointer;
+}
+
+.setting-header:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.setting-dropdown {
+  display: none;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.setting-dropdown a {
+  padding: 10px 40px;
+  color: #fff;
+  text-decoration: none;
+  font-size: 20px;
+}
+
+.setting-dropdown a:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.content-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+
+.menu-item.active {
+  background: rgba(255,255,255,0.3);
+}
+
+.header {
+  height: 60px;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid #ddd;
+}
+
+.content {
+  padding: 20px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  margin-top: 15px;
+}
+
+th, td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+}
+
+th {
+  background: #f0f0f0;
+}
+
+tr:hover {
+  background: #fafafa;
+}
+
+button {
+  padding: 8px 15px;
+  background: #ef476f;
+  border: none;
+  color: white;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+
+.budget-top {
+  display: flex;
+  gap: 25px;
+  margin-bottom: 30px;
+}
+
+
+.bank-card {
+  font-size: 20px;
+  width: 340px;
+  height: 200px;
+  border-radius: 16px;
+  padding: 20px;
+  color: white;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.card-header {
+  font-size: 20px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.card-balance p {
+  font-size: 20px;
+  opacity: 0.8;
+}
+
+.card-balance h2 {
+  margin-top: 5px;
+  font-size: 26px;
+  letter-spacing: 1px;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  letter-spacing: 2px;
+}
+
+.summary-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.summary {
+  background: white;
+  padding: 15px 20px;
+  border-radius: 12px;
+  min-width: 220px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+
+.summary p {
+  font-size: 14px;
+  color: #666;
+}
+
+.summary h3 {
+  margin-top: 5px;
+}
+
+.summary.income h3 {
+  color: #2ecc71;
+}
+
+.summary.expense h3 {
+  color: #e74c3c;
+}
