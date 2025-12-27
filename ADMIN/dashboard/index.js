@@ -1,14 +1,12 @@
-// ================================
-// 1. DOM ELEMENTS
-// ================================
+// DOM ELEMENTS
+
 const content = document.getElementById("content");
 const menuItems = document.querySelectorAll(".menu-item");
 const pageTitle = document.getElementById("page-title");
 
-// ================================
-// 2. MOCK DATA
-// ================================
-const foods = [
+//MOCK DATA
+
+let foods = [
   { id: 1, name: "Phở bò", price: 45000, category: "Món chính", status: "Đang bán" },
   { id: 2, name: "Bún chả", price: 40000, category: "Món chính", status: "Đang bán" },
   { id: 3, name: "Trà đào", price: 30000, category: "Nước uống", status: "Ngừng bán" }
@@ -25,54 +23,160 @@ const budgets = [
   { id: 3, date: "21/12/2025", type: "Thu", note: "Bán hàng", amount: 1800000 }
 ];
 
-// ================================
-// 3. RENDER MENU (MÓN ĂN)
-// ================================
+//MÓN ĂN
+
 function renderMenu() {
   pageTitle.innerText = "Quản lý Menu";
+  content.innerHTML = `
+    <h2 class="page-title">Menu</h2>
 
-  let html = `
+    <!-- SEARCH + FILTER -->
     <div class="page-header">
-      <h3>Danh sách món ăn</h3>
-      <button>+ Thêm món</button>
+      <input id="searchInput" placeholder="Tìm theo tên món..." />
+      <select id="categoryFilter">
+        <option value="">Tất cả danh mục</option>
+        <option value="Món chính">Món chính</option>
+        <option value="Nước uống">Nước uống</option>
+        <option value="Tráng miệng">Tráng miệng</option>
+      </select>
+      <button onclick="openAdd()">+ Thêm món</button>
     </div>
 
-    <table>
-      <tr>
-        <th>Tên món</th>
-        <th>Giá</th>
-        <th>Danh mục</th>
-        <th>Trạng thái</th>
-        <th>Chỉnh sửa</th>
-      </tr>
+    <!-- FORM -->
+    <div class="form-box" id="formBox" style="display:none">
+      <input id="nameInput" placeholder="Tên món" />
+      <input id="priceInput" type="number" placeholder="Giá" />
+      <select id="categoryInput">
+        <option value="Món chính">Món chính</option>
+        <option value="Nước uống">Nước uống</option>
+        <option value="Tráng miệng">Tráng miệng</option>
+      </select>
+      <button onclick="saveFood()">Lưu</button>
+      <button onclick="closeForm()">Hủy</button>
+    </div>
+
+    <!-- TABLE -->
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Tên món</th>
+          <th>Danh mục</th>
+          <th>Giá</th>
+          <th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="foodTable"></tbody>
+    </table>
   `;
 
-  foods.forEach(food => {
-    html += `
+   renderTable(foods);
+
+  document.getElementById("searchInput")
+    .addEventListener("input", filterFood);
+  document.getElementById("categoryFilter")
+    .addEventListener("change", filterFood);
+}
+function renderTable(list) {
+  const table = document.getElementById("foodTable");
+  table.innerHTML = "";
+
+  list.forEach(item => {
+    table.innerHTML += `
       <tr>
-        <td>${food.name}</td>
-        <td>${food.price.toLocaleString()} đ</td>
-        <td>${food.category}</td>
+        <td>${item.name}</td>
+        <td>${item.category}</td>
+        <td>${item.price.toLocaleString()}đ</td>
         <td>
-          <span class="status ${food.status === "Đang bán" ? "active" : "inactive"}">
-            ${food.status}
-          </span>
-        </td>
-        <td>
-          <button class="btn-edit">Sửa</button>
-          <button class="btn-delete">Xóa</button>
+          <button onclick="editFood(${item.id})">Sửa</button>
+          <button onclick="deleteFood(${item.id})">Xóa</button>
         </td>
       </tr>
     `;
   });
+}
+function saveFood() {
+  const name = document.getElementById("nameInput").value.trim();
+  const price = +document.getElementById("priceInput").value;
+  const category = document.getElementById("categoryInput").value;
 
-  html += `</table>`;
-  content.innerHTML = html;
+  if (!name || !price) {
+    alert("Vui lòng nhập đầy đủ thông tin");
+    return;
+  }
+
+  if (editId) {
+    // Update
+    const food = foods.find(f => f.id === editId);
+    food.name = name;
+    food.price = price;
+    food.category = category;
+    editId = null;
+  } else {
+    // Thêm
+    foods.push({
+      id: Date.now(),
+      name,
+      price,
+      category
+    });
+  }
+
+  closeForm();
+  renderTable(foods);
 }
 
-// ================================
-// 4. RENDER RESERVATION (ĐẶT CHỖ)
-// ================================
+// Sửa
+
+function editFood(id) {
+  const food = foods.find(f => f.id === id);
+  editId = id;
+
+  document.getElementById("formBox").style.display = "flex";
+  document.getElementById("nameInput").value = food.name;
+  document.getElementById("priceInput").value = food.price;
+  document.getElementById("categoryInput").value = food.category;
+}
+
+// Xóa
+
+function deleteFood(id) {
+  if (!confirm("Bạn có chắc muốn xóa món này?")) return;
+  foods = foods.filter(f => f.id !== id);
+  renderTable(foods);
+}
+
+//Tìm và lọc
+
+function filterFood() {
+  const keyword = document.getElementById("searchInput").value.toLowerCase();
+  const category = document.getElementById("categoryFilter").value;
+
+  const filtered = foods.filter(item => {
+    const matchName = item.name.toLowerCase().includes(keyword);
+    const matchCategory = category === "" || item.category === category;
+    return matchName && matchCategory;
+  });
+
+  renderTable(filtered);
+}
+
+// Control
+
+function openAdd() {
+  editId = null;
+  document.getElementById("formBox").style.display = "flex";
+  document.getElementById("nameInput").value = "";
+  document.getElementById("priceInput").value = "";
+  document.getElementById("categoryInput").value = "Món chính";
+}
+
+function closeForm() {
+  document.getElementById("formBox").style.display = "none";
+}
+renderMenu();
+
+// ĐẶT CHỖ
+
 function renderReservation() {
   pageTitle.innerText = "Quản lý Đặt chỗ";
 
@@ -114,9 +218,8 @@ function renderReservation() {
   content.innerHTML = html;
 }
 
-// ================================
-// 5. RENDER BUDGET (NGÂN SÁCH)
-// ================================
+//NGÂN SÁCH
+
 function renderBudget() {
   pageTitle.innerText = "Quản lý Ngân sách";
 
@@ -185,10 +288,8 @@ function renderBudget() {
   content.innerHTML = html;
 }
 
+//SIDEBAR CLICK EVENT
 
-// ================================
-// 6. SIDEBAR CLICK EVENT
-// ================================
 menuItems.forEach(item => {
   item.addEventListener("click", () => {
 
@@ -205,9 +306,8 @@ menuItems.forEach(item => {
   });
 });
 
-// ================================
-// 7. INIT – LOAD MẶC ĐỊNH
-// ================================
+// INIT – LOAD MẶC ĐỊNH
+
 renderMenu();
 
 const settingBtn = document.getElementById("settingBtn");

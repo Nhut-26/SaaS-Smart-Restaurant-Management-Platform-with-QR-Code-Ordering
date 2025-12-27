@@ -6,7 +6,7 @@
 
 body {
   display: flex;
-  height: 100vh;
+  height: auto;
   background: #f4f6f8;
   font-size: 24px;
 }
@@ -18,6 +18,8 @@ body {
     box-shadow: 0 10px 25px rgba(0,0,0,0.2);
     padding: 20px;
     color: white;
+    display: flex;
+    flex-direction: column;
 }
 
 .logo{
@@ -66,7 +68,7 @@ body {
 } */
 
 .sidebar_item_setting {
-  margin-top: 100%;
+  margin-top: auto;
   font-size: 30px
 }
 
@@ -233,4 +235,16 @@ button:hover {
 
 .summary.expense h3 {
   color: #e74c3c;
+}
+
+.page-header {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.page-header input,
+.page-header select {
+  padding: 8px;
+  font-size: 14px;
 }
