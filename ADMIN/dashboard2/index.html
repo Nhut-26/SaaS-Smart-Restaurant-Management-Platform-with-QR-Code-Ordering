@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div class="container">
+    <div class="sidebar">
+        <h2>SE Restaurant</h2>
+        <ul>
+            <li onclick="showTab('customer')">Khách hàng</li>
+            <li onclick="showTab('staff')">Nhân viên</li>
+            <li onclick="showTab('report')">Báo cáo</li>
+            <li onclick="showTab('table')">Quản lý Bàn</li>
+        </ul>
+    </div>
+
+    <div class="content">
+
+        <!-- CUSTOMER -->
+        <div id="customer" class="tab hidden">
+            <h2>Quản lý khách hàng</h2>
+            <input
+                type="text"
+                id="customerSearch"
+                placeholder="Tìm kiếm khách hàng..."
+                onkeyup="searchCustomer()"
+                class="search-box"
+            />
+
+            <table id="customerTable">
+                <tr>
+                    <th>Mã khách hàng</th>
+                    <th>Tên khách hàng</th>
+                    <th>Email</th>
+                    <th>Số điện thoại</th>
+                    <th>Số lần đặt chỗ</th>
+                    <th>Tổng Chi tiêu</th>
+                    <th>Trạng thái(VIP/Thường/Bị Khóa)</th>
+                    <th>Ghi chú(Dị ứng Đậu Phộng/...)</th>
+                </tr>
+                <tr>
+                    <td>1</td><td>Nguyễn Văn A</td><td>a@gmail.com</td><td>0981</td><td>5</td><td>1000000</td><td>Thường</td><td>Dị ứng hành lá</td>
+                </tr>
+                <tr>
+                    <td>2</td><td>Trần Thị B</td><td>b@gmail.com</td><td>0982</td><td>3</td><td>500000</td><td>VIP</td><td>-</td>
+                </tr>
+                <tr>
+                    <td>3</td><td>Lê Văn C</td><td>c@gmail.com</td><td>0983</td><td>2</td><td>300000</td><td>Thường</td><td>-</td>
+                </tr>
+                <tr>
+                    <td>4</td><td>Phạm Thị D</td><td>d@gmail.com</td><td>0984</td><td>1</td><td>100000</td><td>Bị Khóa</td><td>Dị ứng Đậu Phộng</td>
+                </tr>
+                <tr>
+                    <td>5</td><td>Hoàng Văn E</td><td>e@gmail.com</td><td>0985</td><td>4</td><td>700000</td><td>VIP</td><td>-</td>
+                </tr>
+                <tr>
+                    <td>6</td><td>Vũ Thị F</td><td>f@gmail.com</td><td>0986</td><td>2</td><td>200000</td><td>Thường</td><td>Dị ứng Đậu Phộng</td>
+                </tr>
+                <tr>
+                    <td>7</td><td>Đặng Văn G</td><td>g@gmail.com</td><td>0987</td><td>1</td><td>100000</td><td>Thường</td><td>-</td>
+                </tr>
+                <tr>
+                    <td>8</td><td>Trịnh Thị H</td><td>h@gmail.com</td><td>0988</td><td>1</td><td>100000</td><td>Thường</td><td>-</td>
+                </tr>
+                <tr>
+                    <td>9</td><td>Phan Văn I</td><td>i@gmail.com</td><td>0989</td><td>1</td><td>100000</td><td>Thường</td><td>-</td>
+                </tr>
+                <tr>
+                    <td>10</td><td>Trương Thị J</td><td>j@gmail.com</td><td>0990</td><td>1</td><td>100000</td><td>Thường</td><td>-</td>
+            </table>
+
+        </div>
+
+        <!-- STAFF -->
+        <div id="staff" class="tab hidden">
+            <h2>Quản lý nhân viên</h2>
+            <input
+                type="text"
+                id="staffSearch"
+                placeholder="Tìm kiếm nhân viên..."
+                onkeyup="searchStaff()"
+                class="search-box"
+            />
+
+            <table id="staffTable">
+                <tr>
+                    <th>Mã nhân viên</th><th>Tên nhân viên</th><th>Chức vụ(Admin/Quản Lý/Thu Ngân/Phục Vụ/ Bảo Vệ)</th><th>Email</th><th>Số điện thoại</th><th>Trạng thái làm việc</th><th>Ca làm(sáng/chiều/tối)</th><th>Thời gian vào-ra</th><th>Ghi chú</th>
+                </tr>
+                <tr><td>1</td><td>Nguyễn Văn X</td><td>Admin</td><td>x@gmail.com</td><td>0901</td><td>Đang làm việc</td><td>Sáng</td><td>08:00 - 12:00</td><td>-</td></tr>
+                <tr><td>2</td><td>Trần Thị Y</td><td>Quản lý</td><td>y@gmail.com</td><td>0902</td><td>Đang làm việc</td><td>Chiều</td><td>13:00 - 17:00</td><td>-</td></tr>
+                <tr><td>3</td><td>Lê Văn Z</td><td>Nhân viên phục vụ</td><td>z@gmail.com</td><td>0903</td><td>Đang làm việc</td><td>Tối</td><td>18:00 - 22:00</td><td>-</td></tr>
+                <tr><td>4</td><td>Phạm Thị W</td><td>Thu ngân</td><td>w@gmail.com</td><td>0904</td><td>Đang làm việc</td><td>Sáng</td><td>08:00 - 12:00</td><td>-</td></tr>
+                <tr><td>5</td><td>Hoàng Văn V</td><td>Bảo vệ</td><td>v@gmail.com</td><td>0905</td><td>Đang làm việc</td><td>Sáng</td><td>08:00 - 12:00</td><td>-</td></tr>
+                <tr><td>6</td><td>Vũ Thị U</td><td>Nhân viên phục vụ</td><td>u@gmail.com</td><td>0906</td><td>Đang làm việc</td><td>Sáng</td><td>08:00 - 12:00</td><td>-</td></tr>
+                <tr><td>7</td><td>Đặng Văn T</td><td>Thu ngân</td><td>t@gmail.com</td><td>0907</td><td>Đang làm việc</td><td>Sáng</td><td>08:00 - 12:00</td><td>-</td></tr>
+                <tr><td>8</td><td>Trịnh Thị S</td><td>Quản lý</td><td>s@gmail.com</td><td>0908</td><td>Đang làm việc</td><td>Sáng</td><td>08:00 - 12:00</td><td>-</td></tr>
+                <tr><td>9</td><td>Phan Văn R</td><td>Bảo vệ</td><td>r@gmail.com</td><td>0909</td><td>Đang làm việc</td><td>Sáng</td><td>08:00 - 12:00</td><td>-</td></tr>
+                <tr><td>10</td><td>Trương Thị Q</td><td>Nhân viên phục vụ</td><td>q@gmail.com</td><td>0910</td><td>Đang làm việc</td><td>Sáng</td><td>08:00 - 12:00</td><td>-</td></tr>
+                <tr><td>11</td><td>Nguyễn Thị P</td><td>Nhân viên phục vụ</td><td>p@gmail.com</td><td>0911</td><td>Đang làm việc</td><td>Sáng</td><td>08:00 - 12:00</td><td>-</td></tr>
+            </table>
+        </div>
+
+        <!-- REPORT -->
+        <div id="report" class="tab hidden">
+            <h2>Báo cáo</h2>
+            <input
+                type="text"
+                id="reportSearch"
+                placeholder="Tìm kiếm báo cáo..."
+                onkeyup="searchReport()"
+                class="search-box"
+            />
+
+            <table id="reportTable">
+                <tr><th>STT</th><th>Loại báo cáo</th><th>Giá trị</th><th>Ghi chú</th></tr>
+                <tr><td>1</td><td>Doanh thu hôm nay</td><td>1,500,000</td><td>-</td></tr>
+                <tr><td>2</td><td>Doanh thu ngày</td><td>1,500,000</td><td>-</td></tr>
+                <tr><td>3</td><td>Doanh thu tháng</td><td>60,000,000</td><td>-</td></tr>
+                <tr><td>4</td><td>Doanh thu năm</td><td>700,000,000</td><td>-</td></tr>
+                <tr><td>5</td><td>Top món bán chạy</td><td>Món A,Món B,Món C</td><td>-</td></tr>
+                <tr><td>6</td><td>Top món bán chậm</td><td>Món D,Món E,Món F</td><td>-</td></tr>
+                <tr><td>7</td><td>Số khách hàng quay lại</td><td>150</td><td>-</td></tr>
+                <tr><td>8</td><td>Số khách hàng mới</td><td>50</td><td>-</td></tr>
+                <tr><td>9</td><td>Số khách hàng VIP</td><td>20</td><td>-</td></tr>
+                <tr><td>10</td><td>Số đơn xử lý</td><td>200</td><td>-</td></tr>
+                <tr><td>11</td><td>Doanh thu nhân viên</td><td>Nhân viên Z: 100,000, Nhân viên U: 150,000</td><td>-</td></tr>
+                <tr><td>12</td><td>Hiệu suất làm việc</td><td>Nhân viên Z: 90%, Nhân viên U: 85%</td><td>-</td></tr>
+            </table>
+        </div>
+        <div id="table" class="tab hidden">
+            <h2>Quản lý bàn</h2>
+            <input
+                type="text"
+                id="tableSearch"
+                placeholder="Tìm kiếm bàn..."
+                onkeyup="searchAvailableTable(this.value)"
+                class="search-box"
+            />
+            <div class="table-grid">
+                <div class="table-box available"
+                 onclick="toggleTable(this)"
+                 data-status ="available">
+                 <span class="table-name">Bàn 1</span>
+                 <span class="table-status">Trống</span>
+            </div>
+                <div class="table-box available"
+                 onclick="toggleTable(this)"
+                 data-status ="available">
+                 <span class="table-name">Bàn 2</span>
+                 <span class="table-status">Trống</span>
+            </div>
+                <div class="table-box available"
+                 onclick="toggleTable(this)"
+                    data-status ="available">
+                 <span class="table-name">Bàn 3</span>
+                 <span class="table-status">Trống</span>
+            </div>
+            <div class="table-box available"
+                 onclick="toggleTable(this)"
+                    data-status ="available">
+                 <span class="table-name">Bàn 4</span>
+                 <span class="table-status">Trống</span>
+            </div>
+            <div class="table-box available"
+                 onclick="toggleTable(this)"
+                    data-status ="available">
+                 <span class="table-name">Bàn 5</span>
+                 <span class="table-status">Trống</span>
+            </div>
+            <div class="table-box available"
+                 onclick="toggleTable(this)"
+                    data-status ="available">
+                 <span class="table-name">Bàn 6</span>
+                 <span class="table-status">Trống</span>
+            </div>
+            <div class="table-box available"
+                 onclick="toggleTable(this)"
+                    data-status ="available">
+                 <span class="table-name">Bàn 7</span>
+                 <span class="table-status">Trống</span>
+            </div>
+            <div class="table-box available"
+                 onclick="toggleTable(this)"
+                    data-status ="available">
+                 <span class="table-name">Bàn 8</span>
+                 <span class="table-status">Trống</span>
+            </div>
+            <div class="table-box available"
+                 onclick="toggleTable(this)"
+                    data-status ="available">
+                 <span class="table-name">Bàn 9</span>
+                 <span class="table-status">Trống</span>
+            </div>
+            <div class="table-box available"
+                 onclick="toggleTable(this)"
+                    data-status ="available">
+                 <span class="table-name">Bàn 10</span>
+                 <span class="table-status">Trống</span>
+            </div>
+        </div>
+        <div id="tableModal" class="modal hidden">
+            <div class="modal-content">
+                <h3>Nhập thông tin bàn</h3>
+                <input id="customerName" placeholder="Tên khách">
+                <input id="customerCount" type="number" placeholder="Số người">
+                <select id="tableStatus">
+                    <option value="available">Trống</option>
+                    <option value="occupied">Đang sử dụng</option>
+                    <option value="reserved">Đã đặt</option>
+                </select>
+                <div class="modal-actions">
+                    <button onclick="saveTableInfo()">Lưu</button>
+                    <button onclick="closeTableModal()">Hủy</button>
+                    <button onclick="deleteTableInfo()">Xóa bàn</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
