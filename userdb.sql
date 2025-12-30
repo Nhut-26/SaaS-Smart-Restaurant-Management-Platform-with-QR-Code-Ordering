@@ -54,4 +54,5 @@ SELECT
 FROM tenants t
 JOIN tenant_users tu ON t.id = tu.tenant_id
 JOIN users u ON u.id = tu.user_id
+
 JOIN tables tb ON t.id = tb.tenant_id;
