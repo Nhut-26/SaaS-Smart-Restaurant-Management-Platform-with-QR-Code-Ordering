@@ -79,14 +79,13 @@ th {
 
 .table-box{
     height:120px;
-    border-radius: 16px;
-    padding: 15px;
+    border-radius: 14px;
+    padding: 12px;
     color: white;
     cursor: pointer;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    box-shadow: 0 6px 15px rgba(0,0,0,0.12);
     transition: all 0.25s ease;
 }
 .table-box:hover {
@@ -108,7 +107,7 @@ th {
     background: linear-gradient(135deg, #dc3545, #ff6b6b);
 }
 .reserved {
-    background: linear-gradient(135deg, #ffc107, #ffd966);
+    background: linear-gradient(135deg, #ffc107, #ffd966) ;
     color:#333;
 }
 .table-info{
@@ -189,4 +188,12 @@ th {
         transform: scale(1);
         opacity: 1;
     }
+}
+.table-title{
+    font-size: 16px;
+    font-weight: bold;
+}
+.table-status-text{
+    font-size: 14px;
+    margin-bottom: 6px;
 }
