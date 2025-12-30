@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>S2O • Guest QR Menu</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .menu-card img { object-fit: cover; height: 130px; }
+    .sticky-actions { position: sticky; bottom: 0; background: white; padding: 12px; border-top: 1px solid #eee; }
+    .small-muted { font-size: .9rem; color: #6c757d; }
+  </style>
+</head>
+
+<body class="bg-light">
+  <nav class="navbar bg-white border-bottom">
+    <div class="container">
+      <span class="navbar-brand mb-0 h1">S2O • Scan2Order</span>
+      <span class="small-muted">Bàn: <b>{{ table_id }}</b></span>
+    </div>
+  </nav>
+
+  <main class="container my-3">
+    {% set flash = request.session.pop("flash", None) %}
+    {% if flash %}
+      <div class="alert alert-success">{{ flash }}</div>
+    {% endif %}
+
+    <div class="row g-3">
+      <!-- LEFT: MENU -->
+      <div class="col-lg-8">
+        <div class="card">
+          <div class="card-body">
+            <form class="d-flex gap-2 flex-wrap" method="get">
+              <input class="form-control" style="max-width: 320px"
+                     name="q" value="{{ q }}" placeholder="Tìm món..."/>
+
+              <select class="form-select" style="max-width: 220px" name="category">
+                <option value="all" {% if category=="all" %}selected{% endif %}>Tất cả danh mục</option>
+                {% for c in categories %}
+                  <option value="{{ c }}" {% if category==c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+              </select>
+
+              <button class="btn btn-outline-primary" type="submit">Lọc</button>
+              <a class="btn btn-outline-secondary" href="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}">Reset</a>
+            </form>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+          {% for it in items %}
+            <div class="col-md-6">
+              <div class="card menu-card">
+                {% if it.image_url %}
+                  <img src="{{ it.image_url }}" class="card-img-top" alt="{{ it.name }}"/>
+                {% endif %}
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                      <div class="fw-semibold">{{ it.name }}</div>
+                      <div class="small-muted">{{ it.category }}</div>
+                    </div>
+                    <div class="fw-semibold">{{ "{:,}".format(it.price) }}₫</div>
+                  </div>
+
+                  {% if it.description %}
+                    <div class="mt-2 small-muted">{{ it.description }}</div>
+                  {% endif %}
+
+                  <div class="mt-3 d-flex gap-2 align-items-center">
+                    {% set ci = cart_map.get(it.id) %}
+                    <form method="post" action="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/cart/sub">
+                      <input type="hidden" name="item_id" value="{{ it.id }}"/>
+                      <button class="btn btn-outline-secondary btn-sm" type="submit">-</button>
+                    </form>
+
+                    <div class="px-2">{{ ci.qty if ci else 0 }}</div>
+
+                    <form method="post" action="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/cart/add">
+                      <input type="hidden" name="item_id" value="{{ it.id }}"/>
+                      <button class="btn btn-primary btn-sm" type="submit" {% if not it.available %}disabled{% endif %}>+</button>
+                    </form>
+
+                    {% if not it.available %}
+                      <span class="badge text-bg-warning">Hết món</span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- RIGHT: CART + ORDERS -->
+      <div class="col-lg-4">
+        <div class="card mb-3">
+          <div class="card-header">Giỏ món</div>
+          <div class="card-body">
+            {% set menu_map = {} %}
+            {% for m in menu %}
+              {% set _ = menu_map.update({m.id: m}) %}
+            {% endfor %}
+
+            {% if not cart %}
+              <div class="text-muted">Chưa có món nào trong giỏ.</div>
+            {% else %}
+              <div class="vstack gap-3">
+                {% for ci in cart %}
+                  {% set it = menu_map.get(ci.item_id) %}
+                  {% if it %}
+                    <div class="border rounded-3 p-2 bg-white">
+                      <div class="d-flex justify-content-between">
+                        <div>
+                          <div class="fw-semibold">{{ it.name }}</div>
+                          <div class="small-muted">{{ "{:,}".format(it.price) }}₫</div>
+                        </div>
+                        <div class="text-end">
+                          <div class="fw-semibold">x{{ ci.qty }}</div>
+                        </div>
+                      </div>
+
+                      <div class="d-flex gap-2 mt-2 align-items-center">
+                        <form method="post" action="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/cart/sub">
+                          <input type="hidden" name="item_id" value="{{ it.id }}"/>
+                          <button class="btn btn-outline-secondary btn-sm" type="submit">-</button>
+                        </form>
+
+                        <form method="post" action="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/cart/add">
+                          <input type="hidden" name="item_id" value="{{ it.id }}"/>
+                          <button class="btn btn-outline-primary btn-sm" type="submit">+</button>
+                        </form>
+
+                        <form class="flex-grow-1" method="post"
+                              action="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/cart/note">
+                          <input type="hidden" name="item_id" value="{{ it.id }}"/>
+                          <input class="form-control form-control-sm" name="note" value="{{ ci.note or '' }}"
+                                 placeholder="Ghi chú (ít đá, không hành...)"/>
+                        </form>
+                      </div>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endif %}
+
+            <hr class="my-3"/>
+            <div class="d-flex justify-content-between">
+              <div class="fw-semibold">Tạm tính</div>
+              <div class="fw-semibold">{{ "{:,}".format(cart_total) }}₫</div>
+            </div>
+            <div class="small-muted">Số lượng: {{ cart_qty }} món</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">Lịch sử gọi món</div>
+          <div class="card-body">
+            {% if not orders %}
+              <div class="text-muted">Chưa có đơn nào.</div>
+            {% else %}
+              <div class="vstack gap-2">
+                {% for o in orders %}
+                  <div class="border rounded-3 p-2 bg-white">
+                    <div class="d-flex justify-content-between">
+                      <div class="fw-semibold">Đơn #{{ o.id }}</div>
+                      <span class="badge text-bg-info">{{ o.status }}</span>
+                    </div>
+                    <div class="small-muted">Bàn: {{ o.table_id }} • Tổng: {{ "{:,}".format(o.total) }}₫</div>
+                    <ul class="mt-2 mb-0">
+                      {% for ln in o.lines %}
+                        <li>
+                          {{ ln.item.name }} x{{ ln.qty }}
+                          {% if ln.note %}<span class="small-muted"> — “{{ ln.note }}”</span>{% endif %}
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="sticky-actions rounded-3 shadow-sm mt-3">
+          <div class="d-flex justify-content-between">
+            <div>
+              <div class="fw-semibold">Tổng</div>
+              <div>{{ "{:,}".format(cart_total) }}₫ • {{ cart_qty }} món</div>
+            </div>
+            <form method="post" action="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/bill/request">
+              <button class="btn btn-outline-primary" type="submit">Gọi thanh toán</button>
+            </form>
+          </div>
+
+          <form class="mt-2" method="post" action="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/order/place">
+            <button class="btn btn-success w-100" type="submit">Đặt món</button>
+          </form>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</body>
+</html>
