@@ -16,7 +16,43 @@
   <nav class="navbar bg-white border-bottom">
     <div class="container">
       <span class="navbar-brand mb-0 h1">S2O • Scan2Order</span>
-      <span class="small-muted">Bàn: <b>{{ table_id }}</b></span>
+
+      <!-- Chọn bàn -->
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false">
+          Bàn: <b>{{ table_id }}</b>
+        </button>
+
+        <ul class="dropdown-menu dropdown-menu-end p-2" style="min-width: 280px;">
+          <div class="small-muted mb-2">Chọn bàn</div>
+
+          <div class="d-flex gap-3 small-muted mb-2">
+            <span><span class="badge bg-primary"> </span> Đang chọn</span>
+            <span><span class="badge bg-warning"> </span> Đã có khách</span>
+            <span><span class="badge bg-secondary"> </span> Trống</span>
+          </div>
+
+          <div class="d-flex flex-wrap gap-2">
+            {% for t in tables %}
+              {% if t == table_id %}
+                {% set cls = "btn-primary" %}
+              {% elif table_status.get(t) %}
+                {% set cls = "btn-warning" %}
+              {% else %}
+                {% set cls = "btn-outline-primary" %}
+              {% endif %}
+
+              <a class="btn btn-sm {{ cls }}"
+                 href="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ t }}?q={{ q|urlencode }}&category={{ category|urlencode }}">
+                {{ t }}
+              </a>
+            {% endfor %}
+          </div>
+        </ul>
+      </div>
     </div>
   </nav>
 
@@ -31,20 +67,31 @@
       <div class="col-lg-8">
         <div class="card">
           <div class="card-body">
-            <form class="d-flex gap-2 flex-wrap" method="get">
-              <input class="form-control" style="max-width: 320px"
-                     name="q" value="{{ q }}" placeholder="Tìm món..."/>
 
-              <select class="form-select" style="max-width: 220px" name="category">
-                <option value="all" {% if category=="all" %}selected{% endif %}>Tất cả danh mục</option>
-                {% for c in categories %}
-                  <option value="{{ c }}" {% if category==c %}selected{% endif %}>{{ c }}</option>
-                {% endfor %}
-              </select>
-
-              <button class="btn btn-outline-primary" type="submit">Lọc</button>
-              <a class="btn btn-outline-secondary" href="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}">Reset</a>
+            <!-- Search -->
+            <form class="d-flex gap-2 flex-wrap mb-3" method="get">
+              <input class="form-control" style="max-width: 360px"
+                     name="q" value="{{ q }}" placeholder="Tìm món... (Enter để tìm)"/>
+              <input type="hidden" name="category" value="{{ category }}"/>
+              <a class="btn btn-outline-secondary"
+                 href="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}">Reset</a>
             </form>
+
+            <!-- NEW: Danh mục bấm là lọc luôn -->
+            <div class="d-flex flex-wrap gap-2">
+              <a class="btn btn-sm {% if category=='all' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                 href="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}?q={{ q|urlencode }}&category=all">
+                Tất cả
+              </a>
+
+              {% for c in categories %}
+                <a class="btn btn-sm {% if category==c %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                   href="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}?q={{ q|urlencode }}&category={{ c|urlencode }}">
+                  {{ c }}
+                </a>
+              {% endfor %}
+            </div>
+
           </div>
         </div>
 
@@ -202,5 +249,7 @@
       </div>
     </div>
   </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
