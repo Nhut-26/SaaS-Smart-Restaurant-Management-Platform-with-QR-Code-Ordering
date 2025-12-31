@@ -50,6 +50,16 @@ class Order(BaseModel):
     lines: List[OrderLine]
     total: int
     status: OrderStatus = OrderStatus.NEW
+    payment_status: PaymentStatus = PaymentStatus.unpaid
+
+class PaymentStatus(str, Enum):
+    unpaid = "unpaid"
+    paid = "paid"
+
+class Table(BaseModel):
+    id: str
+    branch_id: str
+    status: str = "EMPTY"
 
 MENU: Dict[str, List[MenuItem]] = {
     "res_001": [
@@ -92,6 +102,11 @@ MENU: Dict[str, List[MenuItem]] = {
             image_url="https://product.hstatic.net/200000534989/product/dsc08282-enhanced-nr_1_6b28545be8384dff9fa6e786214a2ed1_master.jpg",
             available=True)
     ]
+}
+
+TABLES: Dict[str, Table] = {
+    "T01": Table(id = "TO1", branch_id = "b1"),
+    "T02": Table(id = "TO2", branch_id = "b1"),
 }
 
 CARTS: Dict[str, List[CartItem]] = {}
@@ -194,6 +209,10 @@ def place_order(restaurant_id: str, sid: str, table_id: str) -> Optional[Order]:
 
     ORDERS.setdefault(sid, []).insert(0, order)
     CARTS[sid] = []
+
+    if table_id in TABLES:
+        TABLES[table_id].status = "OCCUPIED"
+
     return order
 
 def request_bill() -> str:
@@ -283,12 +302,22 @@ def order_place(
     request.session["flash"] = msg
     return RedirectResponse(url=f"/g/{restaurant_id}/{branch_id}/tables/{table_id}", status_code=303)
 
+@app.get("/g/{restaurant_id}/{branch_id}/tables/{table_id}/orders")
+def view_orders(request: Request):
+    sid = ensure_session_id(request)
+    return get_orders(sid)
+
 
 @app.post("/g/{restaurant_id}/{branch_id}/tables/{table_id}/bill/request", response_class=HTMLResponse)
 def bill_request(
     request: Request,
     restaurant_id: str, branch_id: str, table_id: str
 ):
+    sid = ensure_session_id(request)
+    for o in ORDERS.get(sid, []):
+        o.payment_status = PaymentStatus.paid
+    if table_id in TABLES:
+        TABLES[table_id].status = "EMPTY"
     request.session["flash"] = request_bill()
     return RedirectResponse(url=f"/g/{restaurant_id}/{branch_id}/tables/{table_id}", status_code=303)
 
