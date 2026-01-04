@@ -12,15 +12,39 @@ let foods = [
   { id: 3, name: "Trà đào", price: 30000, category: "Nước uống", status: "Ngừng bán" }
 ];
 
-const reservations = [
-  { id: 1, name: "Nguyễn Văn A", phone: "0909xxx", time: "18:00", people: 4, status: "Chờ duyệt" },
-  { id: 2, name: "Trần Thị B", phone: "0911xxx", time: "19:30", people: 2, status: "Đã xác nhận" }
+let reservations = [
+  {
+    id: 1,
+    customer: "Nguyễn Văn A",
+    people: 4,
+    time: "18:00",
+    status: "pending", // pending | confirmed
+    tableId: null
+  }
 ];
 
 const budgets = [
   { id: 1, date: "20/12/2025", type: "Thu", note: "Bán hàng", amount: 2500000 },
   { id: 2, date: "20/12/2025", type: "Chi", note: "Nhập nguyên liệu", amount: 1200000 },
   { id: 3, date: "21/12/2025", type: "Thu", note: "Bán hàng", amount: 1800000 }
+];
+// KHÁCH HÀNG
+let customers = [
+  { id: 1, name: "Nguyễn Văn A", phone: "0909xxx", visits: 5 },
+  { id: 2, name: "Trần Thị B", phone: "0911xxx", visits: 2 }
+];
+
+// NHÂN VIÊN
+const staffs = [
+  { id: 1, name: "Lê Minh", role: "Thu ngân", status: "Đang làm" },
+  { id: 2, name: "Phạm Hùng", role: "Phục vụ", status: "Nghỉ" }
+];
+
+// BÀN
+const tables = [
+  { id: 1, name: "Bàn 1", seats: 4, reserved: false },
+  { id: 2, name: "Bàn 2", seats: 2, reserved: true },
+  { id: 3, name: "Bàn 3", seats: 6, reserved: false }
 ];
 
 //MÓN ĂN
@@ -180,113 +204,119 @@ renderMenu();
 function renderReservation() {
   pageTitle.innerText = "Quản lý Đặt chỗ";
 
-  let html = `
-    <div class="page-header">
-      <h3>Danh sách đặt chỗ</h3>
+  content.innerHTML = `
+    <button onclick="openReservationForm()">+ Thêm đặt chỗ</button>
+    <div class="reservation-block pending">
+      <h3>Chờ phê duyệt</h3>
+      ${renderReservationTable("pending")}
     </div>
+    <div class="reservation-block confirmed">
+      <h3>Đã xác nhận</h3>
+      ${renderReservationTable("confirmed")}
+    </div>
+  `;
+}
 
+function renderReservationTable(status) {
+  const list = reservations.filter(r => r.status === status);
+
+  if (list.length === 0) return "<p>Không có dữ liệu</p>";
+
+  return `
     <table>
       <tr>
         <th>Khách</th>
-        <th>SĐT</th>
-        <th>Thời gian</th>
         <th>Số người</th>
-        <th>Trạng thái</th>
+        <th>Giờ</th>
         <th>Hành động</th>
       </tr>
+      ${list.map(r => `
+        <tr>
+          <td>${r.customer}</td>
+          <td>${r.people}</td>
+          <td>${r.time}</td>
+          <td>
+            ${status === "pending"
+              ? `<button onclick="confirmReservation(${r.id})">Xác nhận</button>`
+              : ""}
+            <button onclick="editReservation(${r.id})">Sửa</button>
+            <button onclick="deleteReservation(${r.id})">Xóa</button>
+          </td>
+        </tr>
+      `).join("")}
+    </table>
   `;
-
-  reservations.forEach(r => {
-    html += `
-      <tr>
-        <td>${r.name}</td>
-        <td>${r.phone}</td>
-        <td>${r.time}</td>
-        <td>${r.people}</td>
-        <td>
-          <span class="status pending">${r.status}</span>
-        </td>
-        <td>
-          <button class="btn-confirm">Xác nhận</button>
-          <button class="btn-delete">Hủy</button>
-        </td>
-      </tr>
-    `;
-  });
-
-  html += `</table>`;
-  content.innerHTML = html;
 }
 
-//NGÂN SÁCH
+function confirmReservation(id) {
+  const r = reservations.find(x => x.id === id);
+  const table = tables.find(t => !t.reserved);
 
-function renderBudget() {
-  pageTitle.innerText = "Quản lý Ngân sách";
+  if (!table) {
+    alert("Không còn bàn trống!");
+    return;
+  }
 
-  let totalIncome = 0;
-  let totalExpense = 0;
+  r.status = "confirmed";
+  r.tableId = table.id;
+  table.reserved = true;
 
-  budgets.forEach(b => {
-    if (b.type === "Thu") totalIncome += b.amount;
-    else totalExpense += b.amount;
-  });
+  renderReservation();
+}
+function deleteReservation(id) {
+  reservations = reservations.filter(r => r.id !== id);
+  renderReservation();
+}
 
-  const balance = totalIncome - totalExpense;
+//bao cao
 
-  let html = `
-    <div class="budget-top">
-      <div class="bank-card">
-        <div class="card-header">
-          <span class="bank-name">SE Restaurant Bank</span>
-          <i class="fas fa-wifi"></i>
-        </div>
+function renderFinance() {
+  pageTitle.innerText = "Báo cáo";
 
-        <div class="card-balance">
-          <p>Số dư hiện tại</p>
-          <h2>${balance.toLocaleString()} đ</h2>
-        </div>
+  const totalIncome = budgets
+    .filter(b => b.type === "Thu")
+    .reduce((s, b) => s + b.amount, 0);
 
-        <div class="card-footer">
-          <span>**** 8899</span>
-          <span>12/25</span>
-        </div>
+  const totalExpense = budgets
+    .filter(b => b.type === "Chi")
+    .reduce((s, b) => s + b.amount, 0);
+
+  content.innerHTML = `
+    <!-- TỔNG QUAN -->
+    <div class="summary-cards">
+      <div class="summary income">
+        <p>Tổng thu</p>
+        <h3>${totalIncome.toLocaleString()} đ</h3>
       </div>
-
-      <div class="summary-cards">
-        <div class="summary income">
-          <p>Tổng thu</p>
-          <h3>${totalIncome.toLocaleString()} đ</h3>
-        </div>
-        <div class="summary expense">
-          <p>Tổng chi</p>
-          <h3>${totalExpense.toLocaleString()} đ</h3>
-        </div>
+      <div class="summary expense">
+        <p>Tổng chi</p>
+        <h3>${totalExpense.toLocaleString()} đ</h3>
+      </div>
+      <div class="summary">
+        <p>Lợi nhuận</p>
+        <h3>${(totalIncome - totalExpense).toLocaleString()} đ</h3>
       </div>
     </div>
 
+    <!-- BẢNG NGÂN SÁCH -->
+    <h3>Chi tiết thu chi</h3>
     <table>
       <tr>
-        <th>Ngày</th>
         <th>Loại</th>
-        <th>Nội dung</th>
         <th>Số tiền</th>
+        <th>Ghi chú</th>
       </tr>
+      ${budgets.map(b => `
+        <tr>
+          <td>${b.type}</td>
+          <td>${b.amount.toLocaleString()} đ</td>
+          <td>${b.note}</td>
+        </tr>
+      `).join("")}
+    </table>
   `;
-
-  budgets.forEach(b => {
-    html += `
-      <tr>
-        <td>${b.date}</td>
-        <td>${b.type}</td>
-        <td>${b.note}</td>
-        <td>${b.amount.toLocaleString()} đ</td>
-      </tr>
-    `;
-  });
-
-  html += `</table>`;
-  content.innerHTML = html;
 }
+
 
 //SIDEBAR CLICK EVENT
 
@@ -302,7 +332,11 @@ menuItems.forEach(item => {
 
     if (page === "menu") renderMenu();
     if (page === "reservation") renderReservation();
-    if (page === "budget") renderBudget();
+    if (page === "finance") renderFinance();
+    if (page === "customer") renderCustomer();
+    if (page === "staff") renderStaff();
+    if (page === "table") renderTableManager();
+
   });
 });
 
@@ -317,3 +351,95 @@ settingBtn.addEventListener("click", () => {
   settingMenu.style.display =
     settingMenu.style.display === "flex" ? "none" : "flex";
 });
+
+//khach hang
+
+function renderCustomer() {
+  pageTitle.innerText = "Quản lý Khách hàng";
+
+  let html = `
+    <table>
+      <tr>
+        <th>Tên</th>
+        <th>SĐT</th>
+        <th>Số lần đến</th>
+      </tr>
+  `;
+
+  customers.forEach(c => {
+    html += `
+      <tr>
+        <td>${c.name}</td>
+        <td>${c.phone}</td>
+        <td>${c.visits}</td>
+      </tr>
+    `;
+  });
+
+  html += "</table>";
+  content.innerHTML = html;
+}
+
+//Nhan vien
+
+function renderStaff() {
+  pageTitle.innerText = "Quản lý Nhân viên";
+
+  let html = `
+    <table>
+      <tr>
+        <th>Tên</th>
+        <th>Chức vụ</th>
+        <th>Trạng thái</th>
+      </tr>
+  `;
+
+  staffs.forEach(s => {
+    html += `
+      <tr>
+        <td>${s.name}</td>
+        <td>${s.role}</td>
+        <td>${s.status}</td>
+      </tr>
+    `;
+  });
+
+  html += "</table>";
+  content.innerHTML = html;
+}
+
+// Quan ly ban
+
+function renderTableManager() {
+  pageTitle.innerText = "Quản lý Bàn";
+
+  let html = `<div class="table-grid">`;
+
+  tables.forEach(t => {
+    html += `
+      <div class="table-box ${t.reserved ? "reserved" : "available"}">
+        <h4>${t.name}</h4>
+        <p>${t.seats} chỗ</p>
+        <span>${t.reserved ? "Đã đặt" : "Trống"}</span>
+      </div>
+    `;
+  });
+
+  html += "</div>";
+  content.innerHTML = html;
+}
+
+// lien ket voi dat cho
+
+function confirmReservation(id) {
+  const table = tables.find(t => !t.reserved);
+  if (!table) {
+    alert("Hết bàn trống!");
+    return;
+  }
+
+  table.reserved = true;
+  alert(`Đã gán ${table.name} cho khách`);
+}
+
+

@@ -167,45 +167,6 @@ button:hover {
   margin-bottom: 30px;
 }
 
-
-.bank-card {
-  font-size: 20px;
-  width: 340px;
-  height: 200px;
-  border-radius: 16px;
-  padding: 20px;
-  color: white;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-}
-
-.card-header {
-  font-size: 20px;
-  display: flex;
-  justify-content: space-between;
-}
-
-.card-balance p {
-  font-size: 20px;
-  opacity: 0.8;
-}
-
-.card-balance h2 {
-  margin-top: 5px;
-  font-size: 26px;
-  letter-spacing: 1px;
-}
-
-.card-footer {
-  display: flex;
-  justify-content: space-between;
-  font-size: 14px;
-  letter-spacing: 2px;
-}
-
 .summary-cards {
   display: flex;
   flex-direction: column;
@@ -247,4 +208,72 @@ button:hover {
 .page-header select {
   padding: 8px;
   font-size: 14px;
+}
+
+.table-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 20px;
+}
+
+.table-box {
+  padding: 20px;
+  border-radius: 12px;
+  background: white;
+  text-align: center;
+  font-weight: bold;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.table-box.available {
+  border-left: 6px solid #2ecc71;
+}
+
+.table-box.reserved {
+  border-left: 6px solid #e74c3c;
+  opacity: 0.7;
+}
+.table-box span {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 14px;
+}
+
+.table-box.available span {
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+}
+
+.table-box.reserved span {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+}
+
+.table-box:hover {
+  transform: translateY(-4px);
+  transition: 0.2s;
+}
+
+/* reservation */
+
+.reservation-block {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 25px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+
+.reservation-block h3 {
+  margin-bottom: 15px;
+}
+
+.reservation-block.pending {
+  border: 6px solid #f1c40f;
+}
+
+.reservation-block.confirmed {
+  border: 6px solid #2ecc71;
 }
