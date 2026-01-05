@@ -201,50 +201,43 @@ renderMenu();
 
 // ĐẶT CHỖ
 
-function renderReservation() {
-  pageTitle.innerText = "Quản lý Đặt chỗ";
+function renderTableReservation() {
+  pageTitle.innerText = "Quản lý Bàn & Đặt chỗ";
 
   content.innerHTML = `
-    <button onclick="openReservationForm()">+ Thêm đặt chỗ</button>
-    <div class="reservation-block pending">
-      <h3>Chờ phê duyệt</h3>
-      ${renderReservationTable("pending")}
+    <div class="dual-layout">
+      <div class="layout-left">
+        <div class="section-header">
+          <h3>Sơ đồ bàn hiện tại</h3>
+        </div>
+        <div class="table-grid">
+          ${tables.map(t => `
+            <div class="table-box ${t.reserved ? "reserved" : "available"}">
+              <h4>${t.name}</h4>
+              <p>${t.seats} chỗ</p>
+              <span>${t.reserved ? "Đã đặt" : "Trống"}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="layout-right">
+        <div class="section-header">
+          <h3>Danh sách đặt chỗ</h3>
+          <button onclick="alert('Tính năng thêm đang phát triển')">+ Thêm đặt chỗ</button>
+        </div>
+        
+        <div class="reservation-block pending">
+          <h4>Chờ phê duyệt</h4>
+          ${renderReservationTable("pending")}
+        </div>
+
+        <div class="reservation-block confirmed">
+          <h4>Đã xác nhận</h4>
+          ${renderReservationTable("confirmed")}
+        </div>
+      </div>
     </div>
-    <div class="reservation-block confirmed">
-      <h3>Đã xác nhận</h3>
-      ${renderReservationTable("confirmed")}
-    </div>
-  `;
-}
-
-function renderReservationTable(status) {
-  const list = reservations.filter(r => r.status === status);
-
-  if (list.length === 0) return "<p>Không có dữ liệu</p>";
-
-  return `
-    <table>
-      <tr>
-        <th>Khách</th>
-        <th>Số người</th>
-        <th>Giờ</th>
-        <th>Hành động</th>
-      </tr>
-      ${list.map(r => `
-        <tr>
-          <td>${r.customer}</td>
-          <td>${r.people}</td>
-          <td>${r.time}</td>
-          <td>
-            ${status === "pending"
-              ? `<button onclick="confirmReservation(${r.id})">Xác nhận</button>`
-              : ""}
-            <button onclick="editReservation(${r.id})">Sửa</button>
-            <button onclick="deleteReservation(${r.id})">Xóa</button>
-          </td>
-        </tr>
-      `).join("")}
-    </table>
   `;
 }
 
@@ -253,7 +246,7 @@ function confirmReservation(id) {
   const table = tables.find(t => !t.reserved);
 
   if (!table) {
-    alert("Không còn bàn trống!");
+    alert("Hết bàn trống!");
     return;
   }
 
@@ -261,7 +254,8 @@ function confirmReservation(id) {
   r.tableId = table.id;
   table.reserved = true;
 
-  renderReservation();
+  alert(`Đã gán ${table.name} cho khách ${r.customer}`);
+  renderTableReservation(); // Gọi lại hàm gộp để cập nhật cả bàn và danh sách
 }
 function deleteReservation(id) {
   reservations = reservations.filter(r => r.id !== id);
@@ -323,7 +317,6 @@ function renderFinance() {
 menuItems.forEach(item => {
   item.addEventListener("click", () => {
 
-    // Active menu
     menuItems.forEach(i => i.classList.remove("active"));
     item.classList.add("active");
 
@@ -331,11 +324,10 @@ menuItems.forEach(item => {
     const page = item.dataset.page;
 
     if (page === "menu") renderMenu();
-    if (page === "reservation") renderReservation();
+    if (page === "table-reservation") renderTableReservation();
     if (page === "finance") renderFinance();
     if (page === "customer") renderCustomer();
     if (page === "staff") renderStaff();
-    if (page === "table") renderTableManager();
 
   });
 });
@@ -429,17 +421,50 @@ function renderTableManager() {
   content.innerHTML = html;
 }
 
-// lien ket voi dat cho
-
 function confirmReservation(id) {
-  const table = tables.find(t => !t.reserved);
+  const r = reservations.find(x => x.id === id);
+  const table = tables.find(t => !t.reserved); // Tìm bàn trống đầu tiên [cite: 363]
+
   if (!table) {
     alert("Hết bàn trống!");
     return;
   }
 
+  // Cập nhật dữ liệu
+  r.status = "confirmed";
+  r.tableId = table.id;
   table.reserved = true;
-  alert(`Đã gán ${table.name} cho khách`);
+
+  alert(`Đã gán ${table.name} cho khách ${r.customer}`);
+  renderTableReservation(); // Render lại giao diện gộp
 }
 
+function renderReservationTable(status) {
+  const filtered = reservations.filter(r => r.status === status);
+  
+  if (filtered.length === 0) return "<p style='padding:10px;'>Không có dữ liệu.</p>";
 
+  return `
+    <table>
+      <tr>
+        <th>Khách hàng</th>
+        <th>Số người</th>
+        <th>Giờ</th>
+        <th>Hành động</th>
+      </tr>
+      ${filtered.map(r => `
+        <tr>
+          <td>${r.customer}</td>
+          <td>${r.people}</td>
+          <td>${r.time}</td>
+          <td>
+            ${status === 'pending' 
+              ? `<button onclick="confirmReservation(${r.id})">Xác nhận</button>` 
+              : `<span style="color:green">Đã gán bàn ${r.tableId || ''}</span>`
+            }
+          </td>
+        </tr>
+      `).join('')}
+    </table>
+  `;
+}

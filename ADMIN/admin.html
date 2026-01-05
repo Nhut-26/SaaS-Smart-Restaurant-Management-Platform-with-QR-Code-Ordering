@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S2O - Quản trị hệ thống</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <aside class="sidebar"> <div class="logo">
+            <h1>S2O</h1>
+            <h2>Hệ thống Admin</h2>
+        </div>
+        <ul class="menu">
+            <li class="menu-item active" data-page="dashboard">
+                <i class="fas fa-chart-line"></i> Tổng quan
+            </li>
+            <li class="menu-item" data-page="tenants">
+                <i class="fas fa-store"></i> Nhà hàng (Tenants)
+            </li>
+            <li class="menu-item" data-page="users">
+                <i class="fas fa-users-cog"></i> Người dùng
+            </li>
+            <li class="menu-item" data-page="ai-config">
+                <i class="fas fa-robot"></i> Cấu hình AI
+            </li>
+        </ul>
+    </aside>
+
+    <div class="content-wrapper">
+        <header class="header">
+            <h2 id="page-title">Tổng quan hệ thống</h2>
+            <div class="user-info">
+                <span>Xin chào, Admin</span>
+            </div>
+        </header>
+
+        <main id="content" class="main-content">
+            </main>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
