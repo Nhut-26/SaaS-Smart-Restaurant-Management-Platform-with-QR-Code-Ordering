@@ -78,8 +78,11 @@ function renderTenants() {
   pageTitle.innerText = "Quản lý đối tác Nhà hàng";
   let html = `
     <div class="page-header">
-      <input type="text" placeholder="Tìm kiếm nhà hàng/chủ sở hữu...">
-      <button onclick="alert('Mở form duyệt nhà hàng mới')">+ Duyệt Tenant mới</button>
+      <input type="text" placeholder="Tìm kiếm nhà hàng">
+      <button onclick="addTenantManual()">+ Thêm nhà hàng</button>
+      <button onclick="syncFromGoogleForm()" style="background-color: #27ae60;">
+        <i class="fab fa-google"></i> Duyệt từ Google Form
+      </button>
     </div>
     <table>
       <tr>
@@ -87,7 +90,7 @@ function renderTenants() {
         <th>Nhà hàng</th>
         <th>Chủ sở hữu</th>
         <th>Trạng thái</th>
-        <th>Hành động</th>
+        <th>Chỉnh sửa</th>
       </tr>
   `;
 
@@ -99,10 +102,9 @@ function renderTenants() {
         <td>${t.owner}<br><small>${t.email}</small></td>
         <td><span class="status-badge ${t.status.toLowerCase()}">${t.status}</span></td>
         <td>
-          <button onclick="editTenant(${t.id})">Sửa</button>
-          <button onclick="toggleTenantStatus(${t.id})" class="${t.status === 'Active' ? 'btn-red' : 'btn-green'}">
-            ${t.status === 'Active' ? 'Khóa' : 'Kích hoạt'}
-          </button>
+          <button onclick="editTenant(${t.id})"><i class="fas fa-edit"></i> Sửa</button>
+          <button onclick="deleteTenant(${t.id})" class="btn-red"><i class="fas fa-trash"></i> Xóa</button>
+          <button onclick="toggleTenantStatus(${t.id})" class="btn-toggle">Khóa/Mở</button>
         </td>
       </tr>
     `;
@@ -110,6 +112,79 @@ function renderTenants() {
 
   html += "</table>";
   content.innerHTML = html;
+}
+
+function deleteTenant(id) {
+    if (confirm("Bạn có chắc chắn muốn xóa nhà hàng này? Dữ liệu tenant sẽ bị mất vĩnh viễn!")) {
+        tenants = tenants.filter(t => t.id !== id);
+        renderTenants();
+    }
+}
+
+function editTenant(id) {
+    const t = tenants.find(item => item.id === id);
+    const newName = prompt("Nhập tên nhà hàng mới:", t.name);
+    const newOwner = prompt("Nhập tên chủ sở hữu mới:", t.owner);
+
+    if (newName && newOwner) {
+        t.name = newName;
+        t.owner = newOwner;
+        alert("Cập nhật thành công!");
+        renderTenants();
+    }
+}
+
+function addTenantManual() {
+    const name = prompt("Nhập tên nhà hàng:");
+    const owner = prompt("Nhập tên chủ sở hữu:");
+    const email = prompt("Nhập email liên hệ:");
+
+    if (name && owner && email) {
+        const newId = tenants.length > 0 ? tenants[tenants.length - 1].id + 1 : 1;
+        tenants.push({
+            id: newId,
+            name: name,
+            owner: owner,
+            email: email,
+            status: "Active",
+            joinDate: new Date().toISOString().split('T')[0]
+        });
+        renderTenants();
+    }
+}
+
+async function syncFromGoogleForm() {
+    const API_URL = "https://sheetdb.io/api/v1/lwt1l44qsuwxo"; 
+    
+    try {
+        alert("Đang đồng bộ dữ liệu từ Google Form...");
+        const response = await fetch(API_URL);
+        const data = await response.json();
+        
+        data.forEach(item => {
+            // Kiểm tra theo Email để tránh trùng lặp nhà hàng
+            const isExist = tenants.some(t => t.email === item["Email"]);
+            
+            if (!isExist) {
+                tenants.push({
+                    id: tenants.length + 1,
+                    name: item["Tên nhà hàng"] || "Nhà hàng mới", // Tên cột phải khớp 100% trong Excel
+                    owner: item["Tên chủ sở hữu"] || "Chưa rõ",
+                    email: item["Email"],
+                    status: "Pending", // Mặc định là chờ duyệt
+                    joinDate: new Date().toISOString().split('T')[0]
+                });
+            }
+        });
+        
+        //Cập nhật lại giao diện
+        renderTenants();
+        alert("Đồng bộ thành công! Có " + data.length + " yêu cầu từ Form.");
+        
+    } catch (error) {
+        console.error("Lỗi:", error);
+        alert("Không thể kết nối với Google Sheets. Hãy kiểm tra lại API ID.");
+    }
 }
 
 // 3. QUẢN LÝ NGƯỜI DÙNG TOÀN HỆ THỐNG (Khớp ảnh mẫu ban đầu)
@@ -151,22 +226,23 @@ function renderGlobalUsers() {
 function renderAIConfig() {
   pageTitle.innerText = "Cấu hình module AI thông minh";
   content.innerHTML = `
-    <div class="reservation-block" style="max-width: 600px;">
-      <h4>Tham số thuật toán Recommendation</h4>
-      <div style="margin: 15px 0;">
-        <label>Độ ưu tiên khoảng cách (m): </label>
-        <input type="number" value="2000" style="width: 100px;">
-      </div>
-      <div style="margin: 15px 0;">
-        <label>Trọng số đánh giá (Rating weight): </label>
-        <input type="range" min="0" max="1" step="0.1" value="0.7">
-      </div>
-      <hr>
-      <h4>Trạng thái AI Chatbot</h4>
-      <p>Model: GPT-4o / RAG System</p>
-      <p>Trạng thái: <span style="color:green">Đang hoạt động</span></p>
-      <button onclick="alert('Đã gửi yêu cầu train lại model với dữ liệu mới')">Train lại model</button>
+  <div class="recommendation">
+    <h4>Tham số thuật toán Recommendation</h4>
+    <div style="margin: 15px 0;">
+      <label>Độ ưu tiên khoảng cách (m): </label>
+      <input type="number" value="2000" style="width: 100px;">
     </div>
+    <div style="margin: 15px 0;">
+      <label>Trọng số đánh giá (Rating weight): </label>
+      <input type="range" min="0" max="1" step="0.1" value="0.7">
+    </div>
+  </div>
+  <div class="status">
+    <h4>Trạng thái AI Chatbot</h4>
+    <p>Model: GPT-4o / RAG System</p>
+    <p>Trạng thái: <span style="color:green">Đang hoạt động</span></p>
+    <button onclick="alert('Đã gửi yêu cầu train lại model với dữ liệu mới')">Train lại model</button>
+  </div>
   `;
 }
 

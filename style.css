@@ -154,6 +154,8 @@ button {
   color: white;
   border-radius: 5px;
   cursor: pointer;
+  box-shadow: 0px 2px gray;
+  margin-top: 10px;
 }
 
 button:hover {
@@ -179,6 +181,8 @@ button:hover {
   border-radius: 12px;
   min-width: 220px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  margin: 10px;
+  
 }
 
 .summary p {
@@ -207,7 +211,12 @@ button:hover {
 .page-header input,
 .page-header select {
   padding: 8px;
-  font-size: 14px;
+  font-size: 20px;
+  width: 30rem;
+  border-radius: 10px;
+  border: none;
+  box-shadow: 0px 2px gray;
+  margin-top: 10px;
 }
 
 .table-grid {
@@ -285,7 +294,7 @@ button:hover {
 }
 
 .layout-left {
-  flex: 1.5; /* Ưu tiên diện tích cho sơ đồ bàn */
+  flex: 1.5;
 }
 
 .layout-right {
@@ -302,7 +311,6 @@ button:hover {
   margin-bottom: 20px;
 }
 
-/* Điều chỉnh lại kích thước bảng cho vừa khung nhỏ */
 .layout-right table {
   font-size: 16px;
 }
@@ -313,4 +321,40 @@ button:hover {
 
 .badge.active { background-color: #2ecc71; color: white; padding: 4px 8px; border-radius: 4px; }
 .badge.pending { background-color: #f1c40f; color: white; padding: 4px 8px; border-radius: 4px; }
-/* Style cho bảng Admin giống bảng Manager bạn đã gửi */
+
+.recommendation{
+  margin-top: 10px;
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 25px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  max-width: 600px;
+}
+
+.status{
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 25px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  max-width: 600px;
+}
+
+.btn-red {
+    background-color: #e74c3c !important;
+    color: white;
+}
+.btn-green {
+    background-color: #2ecc71 !important;
+    color: white;
+}
+.btn-toggle {
+    background-color: #34495e !important;
+    color: white;
+}
+.status-badge.pending {
+    background-color: #f1c40f;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
