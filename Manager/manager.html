@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="vi">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SE Restaurant - Manager</title>
+        <link rel="stylesheet" href="../css/style.css">
+        <link rel="stylesheet" href="../css/manager.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="logo">
+            <h1>SE</h1>
+            <h2>Restaurant</h2>
+        </div>
+        <ul class="menu">
+            <li class="menu-item" data-page="menu"><i class="fas fa-utensils"></i> Thực đơn</li>
+            <li class="menu-item" data-page="table-reservation"><i class="fas fa-chair"></i> Bàn & Đặt chỗ</li>
+            <li class="menu-item" data-page="finance"><i class="fas fa-chart-pie"></i> Báo cáo</li>
+            <li class="menu-item" data-page="customer"><i class="fas fa-users"></i> Khách hàng</li>
+            <li class="menu-item" data-page="staff"><i class="fas fa-user-tie"></i> Nhân viên</li>
+        </ul>
+    </aside>
+
+    <div class="content-wrapper">
+        <header class="header">
+            <h2 id="page-title">Quản lý Thực đơn</h2>
+            <div class="user-info">Quản lý: <strong>Chi nhánh 1</strong></div>
+        </header>
+        <main id="content" class="main-content"></main>
+    </div>
+    <div id="universalModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Tiêu đề thông báo</h3>
+                <span class="close-btn" onclick="closeUniversalModal()">&times;</span>
+            </div>
+            
+            <div class="modal-body" id="modalBody">
+                </div>
+
+            <div class="modal-footer">
+                <button onclick="closeUniversalModal()" class="btn-gray">Hủy bỏ</button>
+                <button id="modalSaveBtn" class="btn-green">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/manager.js"></script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+:root {
+    --manager-primary: #eb3f62;
+    --manager-accent: #ff6b6b;
+}
+
+.sidebar { background-color: var(--manager-primary); }
+button { background-color: var(--manager-primary); }
+
+.dual-layout { display: flex; gap: 30px; align-items: flex-start; }
+.layout-left { flex: 2; }
+.layout-right { flex: 1; }
+
+.table-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 20px;
+}
+
+.table-box {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    position: relative;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.table-box:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+
+.table-box.available { border-top: 5px solid #2ecc71; }
+.table-box.reserved { border-top: 5px solid #e74c3c; background: #fff5f5; }
+
+.table-box h4 { font-size: 18px; margin-bottom: 5px; }
+.table-box p { color: #888; font-size: 13px; }
+
+.form-box {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    animation: slideDown 0.3s ease;
+}
+@keyframes slideDown { from {opacity: 0; transform: translateY(-10px);} to {opacity: 1; transform: translateY(0);} }
+
+.dual-layout {
+    display: flex;
+    gap: 30px;
+    padding: 10px;
+}
+
+.reservation-card {
+    background: white;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    border-left: 5px solid #f1c40f; 
+    transition: transform 0.2s;
+}
+
+.reservation-card:hover {
+    transform: translateY(-3px);
+}
+
+.reservation-card h4 {
+    margin: 0 0 10px 0;
+    color: #2c3e50;
+    display: flex;
+    justify-content: space-between;
+}
+
+.reservation-card p {
+    font-size: 14px;
+    color: #666;
+    margin: 5px 0;
+}
+
+.reservation-card .btn-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.btn-release {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-top: 10px;
+}
