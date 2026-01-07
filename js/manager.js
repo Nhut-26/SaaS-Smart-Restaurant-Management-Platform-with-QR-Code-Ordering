@@ -96,7 +96,7 @@ async function renderMenu() {
                 <tbody id="menuTableBody"></tbody>
             </table>
         `;
-        renderTableBody(allFoods); // Đổ dữ liệu vào bảng
+        renderTableBody(allFoods); 
     } catch (err) {
         content.innerHTML = `Lỗi: ${err.message}`;
     }
