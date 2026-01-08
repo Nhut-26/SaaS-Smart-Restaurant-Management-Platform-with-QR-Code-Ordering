@@ -1,0 +1,68 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>d0183e78-2583-424a-9960-6710b2e6d1a8</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>
+    </StartupFile>
+    <SearchPath>
+    </SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>SmartFoodChatbot</Name>
+    <RootNamespace>SmartFoodChatbot</RootNamespace>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Folder Include="backend_ai\" />
+    <Folder Include="backend_ai\app\" />
+    <Folder Include="backend_ai\app\core\" />
+    <Folder Include="backend_ai\app\modules\" />
+    <Folder Include="backend_ai\app\modules\chatbot\" />
+    <Folder Include="backend_ai\app\modules\recommendation\" />
+    <Folder Include="backend_ai\app\utils\" />
+    <Folder Include="database\" />
+    <Folder Include="mobile_app\" />
+    <Folder Include="mobile_app\assets\" />
+    <Folder Include="mobile_app\src\" />
+    <Folder Include="mobile_app\src\components\" />
+    <Folder Include="mobile_app\src\screens\" />
+    <Folder Include="mobile_app\src\services\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include=".env" />
+    <Content Include="backend_ai\Dockerfile" />
+    <Content Include="backend_ai\requirements.txt" />
+    <Content Include="database\init_schema.sql" />
+    <Content Include="docker-compose.yml" />
+    <Content Include="mobile_app\App.js" />
+    <Content Include="mobile_app\app.json" />
+    <Content Include="mobile_app\package.json" />
+    <Content Include="mobile_app\src\services\api.js" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="backend_ai\app\main.py" />
+    <Compile Include="backend_ai\app\modules\chatbot\ai_agent.py" />
+    <Compile Include="backend_ai\app\modules\recommendation\engine.py" />
+    <Compile Include="backend_ai\app\utils\memory.py" />
+    <Compile Include="backend_ai\main.py" />
+    <Compile Include="backend_ai\test_ai.py" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+  <!-- Uncomment the CoreCompile target to enable the Build command in
+       Visual Studio and specify your pre- and post-build commands in
+       the BeforeBuild and AfterBuild targets below. -->
+  <!--<Target Name="CoreCompile" />-->
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+</Project>
