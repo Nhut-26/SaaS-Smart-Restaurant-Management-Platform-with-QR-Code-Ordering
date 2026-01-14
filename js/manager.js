@@ -2,22 +2,13 @@ const content = document.getElementById("content");
 const pageTitle = document.getElementById("page-title");
 
 const supabaseUrl = 'https://vhjxxgajenkzuykkqloi.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0OTgyMjIsImV4cCI6MjA4MzA3NDIyMn0.l04T4IY-2mdFTvVhksDBmL5buErB1Pfa97GQOgRVtCg';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzQ5ODIyMiwiZXhwIjoyMDgzMDc0MjIyfQ.c6AfU8do1i4pgxiE-1SCrT6OU6Sgj4aSbhB-Rh981MM';
 const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 let allFoods = [];
 
-let tables = [
-  { id: 1, name: "Bàn 01", seats: 4, reserved: false },
-  { id: 2, name: "Bàn 02", seats: 2, reserved: true }, // Giả sử đang có khách
-  { id: 3, name: "Bàn 03", seats: 6, reserved: false },
-  { id: 4, name: "Bàn 04", seats: 4, reserved: false },
-  { id: 5, name: "VIP 01", seats: 10, reserved: false }
-];
+let allTables = [];
 
-let reservations = [
-  { id: 1, customer: "Nguyễn Văn A", phone: "0909xxx", people: 4, time: "18:30", status: "pending", tableId: null },
-  { id: 2, customer: "Trần Thị B", phone: "0912xxx", people: 2, time: "19:00", status: "confirmed", tableId: 2 }
-];
+let allReservations = [];
 
 let budgets = [
   { id: 1, type: "Thu", note: "Bán hàng ca sáng", amount: 2500000 },
@@ -31,8 +22,8 @@ let customers = [
 ];
 
 let staffs = [
-    { id: 1, name: "Lê Minh", role: "Bếp trưởng", status: "Đang làm" },
-    { id: 2, name: "Phạm Hùng", role: "Phục vụ", status: "Đang làm" }
+    { id: 1, name: "Nguyễn Văn Nhân", role: "Phục vụ", status: "Active", shift: "Sáng (08:00 - 14:00)", permissions: ["view_menu", "create_order"] },
+    { id: 2, name: "Trần Thị Bếp", role: "Đầu bếp", status: "Active", shift: "Chiều (14:00 - 22:00)", permissions: ["view_menu", "edit_menu"] }
 ];
 
 // tự động khởi chạy
@@ -64,7 +55,7 @@ async function renderMenu() {
     content.innerHTML = `<div class="loading">Đang tải dữ liệu từ Database...</div>`;
 
     try {
-        const { data, error } = await _supabase.from('menus').select('*').order('id', { ascending: false });
+        const { data, error } = await _supabase.from('menus').select('*').order('id', { ascending: true });
         if (error) throw error;
         allFoods = data;
 
@@ -85,11 +76,10 @@ async function renderMenu() {
             <table>
                 <thead>
                     <tr>
-                        <th>Ảnh</th>
                         <th>Tên món</th>
                         <th>Danh mục</th>
                         <th>Giá</th>
-                        <th>Chỉnh sửa</th>
+                        <th>Hành động</th>
                     </tr>
                 </thead>
                 <tbody id="menuTableBody"></tbody>
@@ -103,15 +93,21 @@ async function renderMenu() {
 
 function renderTableBody(data) {
     const tbody = document.getElementById("menuTableBody");
+    if (!tbody) return;
+
+    if (data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center">Không có dữ liệu hiển thị.</td></tr>`;
+        return;
+    }
+
     tbody.innerHTML = data.map(f => `
         <tr>
-            <td><img src="${f.image_url || ''}" style="width:40px;height:40px;border-radius:4px;object-fit:cover;"></td>
-            <td>${f.food_name}</td>
+            <td><strong>${f.food_name}</strong></td>
             <td><span class="status-badge active">${f.category}</span></td>
             <td>${Number(f.price).toLocaleString()}đ</td>
             <td>
-                <button onclick="editFood(${f.id})" class="btn-gray"><i class="fas fa-edit"></i></button>
-                <button onclick="deleteFood(${f.id})" class="btn-red"><i class="fas fa-trash"></i></button>
+                <button onclick="window.editFood('${f.id}')" class="btn-gray"><i class="fas fa-edit"></i> Sửa</button>
+                <button onclick="window.deleteFood('${f.id}')" class="btn-red"><i class="fas fa-trash"></i> Xóa</button>
             </td>
         </tr>
     `).join('');
@@ -128,8 +124,7 @@ async function openAddMenuForm() {
             .insert([{ 
                 food_name: name, 
                 price: parseInt(price), 
-                category: category,
-                image_url: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c" // Ảnh mẫu
+                category: category
             }]);
 
         if (error) {
@@ -142,25 +137,22 @@ async function openAddMenuForm() {
 }
 
 window.deleteFood = async function(id) {
-    const bodyHtml = `<p style="text-align:center; padding: 10px;">Bạn có chắc chắn muốn xóa món ăn này khỏi thực đơn không?<br>
-                      <small style="color:red;">(Hành động này không thể hoàn tác)</small></p>`;
+    const isConfirm = confirm("Bạn có chắc chắn muốn xóa món này không?");
+    if (!isConfirm) return;
 
-    showUniversalModal("Xác nhận xóa", bodyHtml, async () => {
-        try {
-            const { error } = await _supabase
-                .from('menus')
-                .delete()
-                .eq('id', id);
+    try {
+        const { error } = await _supabase
+            .from('menus')
+            .delete()
+            .eq('id', id);
 
-            if (error) throw error;
+        if (error) throw error;
 
-            alert("Đã xóa món ăn thành công!");
-            renderMenu(); 
-        } catch (err) {
-            console.error("Lỗi khi xóa:", err);
-            alert("Không thể xóa món ăn: " + err.message);
-        }
-    });
+        alert("Đã xóa món ăn thành công!");
+        renderMenu();
+    } catch (err) {
+        alert("Không thể xóa: " + err.message);
+    }
 };
 
 window.openMenuForm = function(item = null) {
@@ -168,11 +160,18 @@ window.openMenuForm = function(item = null) {
     const bodyHtml = `
         <div class="form-group">
             <label>Tên món</label>
-            <input type="text" id="fName" value="${item ? item.food_name : ''}">
+            <input type="text" id="m_name" value="${item ? item.food_name : ''}">
         </div>
         <div class="form-group">
-            <label>Giá (VNĐ)</label>
-            <input type="number" id="fPrice" value="${item ? item.price : ''}">
+            <label>Giá bán</label>
+            <input type="number" id="m_price" value="${item ? item.price : ''}">
+        </div>
+        <div class="form-group">
+            <label>Danh mục</label>
+            <select id="m_cat">
+                <option value="Món chính" ${item?.category === 'Món chính' ? 'selected' : ''}>Món chính</option>
+                <option value="Đồ uống" ${item?.category === 'Đồ uống' ? 'selected' : ''}>Đồ uống</option>
+            </select>
         </div>
     `;
 
@@ -228,104 +227,298 @@ window.openMenuModal = function(item = null) {
 }
 
 window.editFood = function(id) {
-    const item = allFoods.find(f => f.id === id);
+    console.log("Đang click sửa ID:", id);
+    console.log("Danh sách hiện tại:", allFoods);
+    const item = allFoods.find(f => f.id == id);
+    
+    if (!item) {
+        alert("Lỗi: Không tìm thấy dữ liệu món ăn.");
+        return;
+    }
+
     openMenuModal(item);
-}
+
+    const bodyHtml = `
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label>Tên món</label>
+            <input type="text" id="edit_m_name" value="${item.food_name}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label>Giá bán (VNĐ)</label>
+            <input type="number" id="edit_m_price" value="${item.price}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label>Danh mục</label>
+            <select id="edit_m_cat" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+                <option value="Món chính" ${item.category === 'Món chính' ? 'selected' : ''}>Món chính</option>
+                <option value="Đồ uống" ${item.category === 'Đồ uống' ? 'selected' : ''}>Đồ uống</option>
+                <option value="Tráng miệng" ${item.category === 'Tráng miệng' ? 'selected' : ''}>Tráng miệng</option>
+            </select>
+        </div>
+    `;
+
+    window.showUniversalModal("Chỉnh sửa món ăn", bodyHtml, async () => {
+        const updatedData = {
+            food_name: document.getElementById("edit_m_name").value,
+            price: parseInt(document.getElementById("edit_m_price").value),
+            category: document.getElementById("edit_m_cat").value
+        };
+
+        const { error } = await _supabase
+            .from('menus')
+            .update(updatedData)
+            .eq('id', id);
+
+        if (error) {
+            alert("Lỗi khi lưu: " + error.message);
+        } else {
+            alert("Cập nhật thành công!");
+            renderMenu();
+        }
+    });
+};
 
 window.filterMenu = function() {
-    const search = document.getElementById("searchInput").value.toLowerCase();
-    const cat = document.getElementById("categoryFilter").value;
+    const keyword = document.getElementById("searchInput").value.toLowerCase();
+    const category = document.getElementById("categoryFilter").value;
 
-    const filtered = allFoods.filter(f => {
-        const matchName = f.food_name.toLowerCase().includes(search);
-        const matchCat = cat === "" || f.category === cat;
-        return matchName && matchCat;
+    const filtered = allFoods.filter(item => {
+        const matchesName = item.food_name.toLowerCase().includes(keyword);
+        const matchesCat = category === "" || item.category === category;
+        return matchesName && matchesCat;
     });
+
     renderTableBody(filtered);
 }
 
-// Đặt chỗ
-function renderTableReservation() {
-    pageTitle.innerText = "Bàn & Đặt chỗ";
+// Chỗ ngồi
+async function fetchTableData() {
+    try {
+        const tableRes = await _supabase
+            .from('tables')
+            .select('*')
+            .order('id', { ascending: true });
+        
+        allTables = tableRes.data || [];
+
+        const bookingRes = await _supabase
+            .from('bookings')
+            .select('*')
+            .neq('status', 'completed')
+            .order('booking_time', { ascending: true });
+
+        allReservations = bookingRes.data || [];
+
+        renderTableGrid();      
+        renderReservationList(); 
+
+    } catch (err) {
+        console.error("Lỗi tải data:", err);
+        alert("Không thể tải dữ liệu bàn/đặt chỗ. Kiểm tra Console.");
+    }
+}
+
+async function renderTableReservation() {
+    pageTitle.innerText = "Quản lý Bàn & Đặt chỗ";
+    content.innerHTML = `<div class="loading">Đang tải dữ liệu bàn và khách...</div>`;
+
     
-    const pending = reservations.filter(r => r.status === 'pending');
     
     content.innerHTML = `
+        <div class="page-header">
+            <div class="filter-group">
+                <button class="btn-green" onclick="openAddTableModal()">+ Thêm bàn mới</button>
+                <div style="margin: 20px; font-size: 14px; color: #666;">
+                    <i class="fas fa-circle" style="color: #2ecc71;"></i> Trống &nbsp;
+                    <i class="fas fa-circle" style="color: #e74c3c;"></i> Đang phục vụ
+                </div>
+            </div>
+        </div>
+
         <div class="dual-layout">
             <div class="layout-left">
-                <div class="page-header"><h3><i class="fas fa-th"></i> Sơ đồ bàn</h3></div>
-                <div class="table-grid">
-                    ${tables.map(t => `
-                        <div class="table-box ${t.reserved ? 'reserved' : 'available'}">
-                            <h4>${t.name}</h4>
-                            <p>${t.seats} ghế</p>
-                            ${t.reserved 
-                                ? `<small style="color:#e74c3c; font-weight:bold;">Đang có khách</small>
-                                   <button onclick="releaseTable(${t.id})" class="btn-release">Trả bàn (Xong)</button>` 
-                                : '<small style="color:#2ecc71; font-weight:bold;">Bàn trống</small>'
-                            }
-                        </div>
-                    `).join('')}
-                </div>
+                <h3 style="margin-bottom: 15px;">Sơ đồ nhà hàng</h3>
+                <div class="table-grid" id="tableGridContainer"></div>
             </div>
 
             <div class="layout-right">
-                <div class="page-header">
-                    <h3><i class="fas fa-clock"></i> Khách đang chờ (${pending.length})</h3>
-                </div>
-                
-                <div class="reservation-list">
-                    ${pending.length > 0 ? pending.map(r => `
-                        <div class="reservation-card">
-                            <h4>
-                                <span>${r.customer}</span>
-                                <span style="font-size: 12px; background: #eee; padding: 2px 8px; border-radius: 10px;">
-                                    ID: #${r.id}
-                                </span>
-                            </h4>
-                            <p><i class="fas fa-users"></i> Số lượng: <strong>${r.people} người</strong></p>
-                            <p><i class="far fa-clock"></i> Giờ hẹn: <strong>${r.time}</strong></p>
-                            <p><i class="fas fa-phone"></i> SĐT: ${r.phone}</p>
-                            
-                            <div class="btn-group">
-                                <button onclick="confirmReservation(${r.id})" class="btn-green" style="flex: 2;">
-                                    Xếp bàn ngay
-                                </button>
-                                <button onclick="rejectReservation(${r.id})" class="btn-red" style="flex: 1;">
-                                    Hủy
-                                </button>
-                            </div>
-                        </div>
-                    `).join('') : `
-                        <div style="text-align:center; padding: 40px; color: #999;">
-                            <i class="fas fa-check-circle fa-3x"></i>
-                            <p style="margin-top:10px;">Hiện tại không có khách chờ</p>
-                        </div>
-                    `}
+                <h3 style="margin-bottom: 15px;">Danh sách đặt bàn</h3>
+                <div id="reservationList">
+                    <div class="loading">Đang tải danh sách...</div>
                 </div>
             </div>
         </div>
     `;
+
+    await fetchTableData();
+    
+    renderTableGrid();
+    renderReservationList();
 }
 
-window.confirmReservation = function(id) {
-    // 1. Tìm đơn đặt
-    const res = reservations.find(r => r.id === id);
+function renderTableGrid() {
+    const container = document.getElementById("tableGridContainer");
     
-    // 2. Tìm bàn trống phù hợp (Logic đơn giản: lấy bàn trống đầu tiên)
-    const availableTable = tables.find(t => !t.reserved && t.seats >= res.people);
+    container.innerHTML = allTables.map(t => {
+        const currentGuest = allReservations.find(r => r.table_id === t.id && r.status === 'confirmed');
+        
+        const isOccupied = t.status === 'occupied' || (currentGuest !== undefined);
+        const statusClass = isOccupied ? 'reserved' : 'available';
+        const iconColor = isOccupied ? 'white' : '#2ecc71';
+        const iconType = isOccupied ? 'fa-users' : 'fa-couch';
+
+        let capacityDisplay;
+        if (isOccupied && currentGuest) {
+            capacityDisplay = `<span style="font-size: 1.4em; font-weight: bold; color: white;">${currentGuest.people_count}/${t.capacity}</span> <span style="font-size:0.8em">khách</span>`;
+        } else {
+            capacityDisplay = `<span style="color:#666">Sức chứa: ${t.capacity} người</span>`;
+        }
+
+        return `
+            <div class="table-box ${statusClass}" onclick="window.handleTableClick(${t.id})">
+                <div class="table-icon" style="color:${iconColor}; font-size: 24px; margin-bottom:10px;">
+                    <i class="fas ${iconType}"></i>
+                </div>
+                <h4 style="${isOccupied ? 'color:white' : ''}">${t.table_name}</h4>
+                
+                <div style="margin-top: 5px;">
+                    ${capacityDisplay}
+                </div>
+                
+                ${isOccupied && currentGuest ? `<div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.3); color:#fff; font-size:12px;">KH: ${currentGuest.customer_name}</div>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+function renderReservationList() {
+    const container = document.getElementById("reservationList");
     
-    if (!availableTable) {
-        alert("Không còn bàn trống phù hợp cho " + res.people + " người!");
+    const pendingList = allReservations.filter(r => r.status === 'pending');
+
+    if (pendingList.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; color:#999; padding:20px; background:#fff; border-radius:8px;">
+                <i class="far fa-calendar-check" style="font-size:24px; margin-bottom:10px;"></i><br>
+                Hiện không có khách chờ
+            </div>`;
         return;
     }
 
-    // 3. Cập nhật dữ liệu
-    res.status = "confirmed";
-    res.tableId = availableTable.id;
-    availableTable.reserved = true;
+    container.innerHTML = pendingList.map(r => {
+      
+        const dateObj = new Date(r.booking_time);
+        const timeStr = dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = dateObj.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 
-    // 4. Render lại
+        return `
+        <div class="reservation-card" style="border-left: 4px solid #f1c40f;">
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <h4 style="margin:0; font-size:16px;">${r.customer_name}</h4>
+                <span class="status-badge pending">Chờ xếp</span>
+            </div>
+            
+            <div style="margin: 10px 0; font-size: 13px; color: #555;">
+                <p><i class="fas fa-users" style="width:20px"></i> <strong>${r.people_count}</strong> khách</p>
+                <p><i class="fas fa-clock" style="width:20px"></i> ${timeStr} - ${dateStr}</p>
+                <p><i class="fas fa-phone" style="width:20px"></i> ${r.phone}</p>
+            </div>
+
+            <button onclick="window.assignTableModal('${r.id}')" class="btn-green" style="width:100%; padding:8px;">
+                <i class="fas fa-arrow-left"></i> Xếp vào bàn trống
+            </button>
+        </div>
+        `;
+    }).join('');
+}
+
+window.handleTableClick = function(tableId) {
+    const table = allTables.find(t => t.id === tableId);
+    const guest = allReservations.find(r => r.table_id === tableId && r.status === 'confirmed');
+
+    if (guest) {
+        const bodyHtml = `
+            <div style="text-align:center">
+                <h3 style="color: #e74c3c; margin-bottom: 20px;">${table.table_name} đang phục vụ</h3>
+                
+                <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; text-align: left; margin-bottom: 20px;">
+                    <p><strong>Khách hàng:</strong> ${guest.customer_name}</p>
+                    <p><strong>Số điện thoại:</strong> ${guest.phone || 'N/A'}</p>
+                    <p><strong>Số lượng khách:</strong> ${guest.people_count} / ${table.capacity} ghế</p>
+                    <p><strong>Thời gian đặt:</strong> ${new Date(guest.booking_time).toLocaleString('vi-VN')}</p>
+                </div>
+
+                <p style="margin-bottom: 20px;">Xác nhận khách đã thanh toán và dọn bàn?</p>
+            </div>
+        `;
+
+        showUniversalModal("Chi tiết bàn & Thanh toán", bodyHtml, async () => {
+            try {
+                await _supabase.from('tables')
+                    .update({ status: 'available' })
+                    .eq('id', tableId);
+
+                await _supabase.from('bookings')
+                    .update({ status: 'completed' })
+                    .eq('id', guest.id);
+                
+                alert("Đã trả bàn thành công!");
+                fetchTableData();
+            } catch (err) {
+                alert("Lỗi khi cập nhật: " + err.message);
+            }
+        });
+
+    } else {
+        const bodyHtml = `
+            <div class="form-group">
+                <label>Tên bàn</label>
+                <input type="text" id="edit_t_name" value="${table.table_name}">
+            </div>
+            <div class="form-group">
+                <label>Số ghế tối đa</label>
+                <input type="number" id="edit_t_seats" value="${table.capacity}">
+            </div>
+            <p style="font-size:13px; color:#666; margin-top:10px;">
+                *Để xếp khách vào bàn này, vui lòng chọn khách từ danh sách "Chờ xếp" bên phải màn hình.
+            </p>
+        `;
+        showUniversalModal("Chỉnh sửa thông tin bàn", bodyHtml, async () => {
+            const newName = document.getElementById("edit_t_name").value;
+            const newSeats = document.getElementById("edit_t_seats").value;
+            
+            await _supabase.from('tables')
+                .update({ table_name: newName, capacity: newSeats })
+                .eq('id', tableId);
+                
+            fetchTableData();
+        });
+    }
+}
+
+window.openAddTableModal = function() {
+    const bodyHtml = `
+        <div class="form-group"><label>Tên bàn</label><input type="text" id="new_t_name" placeholder="Bàn 10"></div>
+        <div class="form-group"><label>Số ghế</label><input type="number" id="new_t_seats" value="4"></div>
+    `;
+    showUniversalModal("Thêm bàn mới", bodyHtml, async () => {
+        const name = document.getElementById("new_t_name").value;
+        const seats = document.getElementById("new_t_seats").value;
+        await _supabase.from('restaurant_tables').insert([{ name, seats, status: 'available' }]);
+        renderTableReservation();
+    });
+}
+
+window.confirmReservation = function(id) {
+    const res = allReservations.find(r => r.id === id);
+    
+    const availableTable = tables.find(t => !t.reserved && t.capacity >= res.people_count);
+    
+    if (!availableTable) {
+        alert("Không còn bàn trống phù hợp cho " + res.people_count + " người!");
+        return;
+    }
+
     alert(`Đã xếp ${res.customer} vào ${availableTable.name}`);
     renderTableReservation();
 }
@@ -333,16 +526,16 @@ window.confirmReservation = function(id) {
 window.releaseTable = function(tableId) {
     if (confirm("Xác nhận khách đã thanh toán và dọn bàn xong?")) {
 
-        const table = tables.find(t => t.id === tableId);
+        const table = allTables.find(t => t.id === tableId);
         if (table) table.reserved = false;
 
-        reservations.forEach(r => {
-            if (r.tableId === tableId && r.status === 'confirmed') {
+        allReservations.forEach(r => {
+            if (r.id === tableId && r.status === 'confirmed') {
                 r.status = 'completed'; 
             }
         });
 
-        alert("Đã giải phóng " + table.name);
+        alert("Đã giải phóng " + table.table_name);
         renderTableReservation();
     }
 };
@@ -358,7 +551,7 @@ window.rejectReservation = function(id) {
 };
 
 window.openBookingForm = function(resId) {
-    const res = reservations.find(r => r.id === resId);
+    const res = allReservations.find(r => r.id === resId);
     const bodyHtml = `
         <div class="form-group">
             <label>Tên khách hàng</label>
@@ -371,11 +564,58 @@ window.openBookingForm = function(resId) {
     `;
 
     showUniversalModal("Xác nhận xếp bàn", bodyHtml, async () => {
-        // Logic cập nhật trạng thái đặt bàn
-        res.customer = document.getElementById("custName").value;
-        res.people = document.getElementById("custPeople").value;
+        res.customer_name = document.getElementById("custName").value;
+        res.people_count = document.getElementById("custPeople").value;
         res.status = 'confirmed';
         renderTableReservation(); // Load lại sơ đồ bàn
+    });
+}
+
+window.assignTableModal = function(reservationId) {
+    const resItem = allReservations.find(r => r.id == reservationId);
+    
+    const availableTables = allTables.filter(t => t.status === 'available');
+
+    if (availableTables.length === 0) {
+        alert("Hiện không còn bàn trống nào để xếp!");
+        return;
+    }
+
+    const bodyHtml = `
+        <div style="margin-bottom:15px; background: #e8f8f5; padding: 10px; border-radius: 5px;">
+            <p>Khách: <strong>${resItem.customer_name}</strong></p>
+            <p>Số lượng: <strong>${resItem.people_count} người</strong></p>
+        </div>
+        <div class="form-group">
+            <label>Chọn bàn thích hợp:</label>
+            <select id="select_table_id" style="width:100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
+                ${availableTables.map(t => {
+                    const isSuitable = t.capacity >= resItem.people_count;
+                    const style = isSuitable ? "font-weight:bold; color:green" : "color:gray";
+                    return `<option value="${t.id}" style="${style}">
+                        ${t.table_name} (Ghế: ${t.capacity}) ${isSuitable ? ' - Phù hợp' : ' - Hơi nhỏ'}
+                    </option>`;
+                }).join('')}
+            </select>
+        </div>
+    `;
+
+    showUniversalModal("Xếp bàn cho khách", bodyHtml, async () => {
+        const selectedTableId = document.getElementById("select_table_id").value;
+
+        try {
+            await _supabase.from('tables')
+                .update({ status: 'occupied' })
+                .eq('id', selectedTableId);
+            await _supabase.from('bookings')
+                .update({ status: 'confirmed', table_id: selectedTableId })
+                .eq('id', reservationId);
+
+            alert("Xếp bàn thành công!");
+            fetchTableData();
+        } catch (err) {
+            alert("Lỗi hệ thống: " + err.message);
+        }
     });
 }
 
@@ -439,18 +679,124 @@ function renderCustomer() {
 }
 // Nhân viên
 function renderStaff() {
-    pageTitle.innerText = "Quản lý Nhân sự";
+    pageTitle.innerText = "Quản lý Nhân sự & Lịch làm";
+    
     let html = `
-        <div class="page-header"><button class="btn-green">+ Thêm nhân viên</button></div>
+        <div class="page-header">
+            <div style="display:flex; gap:10px;">
+                <button onclick="openStaffModal()" class="btn-green">+ Thêm nhân viên</button>
+                <button onclick="exportStaffExcel()" class="btn-gray"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            </div>
+        </div>
         <table>
-            <thead><tr><th>Tên</th><th>Chức vụ</th><th>Trạng thái</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>Họ Tên</th>
+                    <th>Chức vụ</th>
+                    <th>Ca làm việc</th>
+                    <th>Quyền hạn</th>
+                    <th>Hành động</th>
+                </tr>
+            </thead>
             <tbody>
-                ${staffs.map(s => `<tr><td>${s.name}</td><td>${s.role}</td><td><span class="status-badge active">${s.status}</span></td></tr>`).join('')}
+                ${staffs.map(s => `
+                    <tr>
+                        <td><strong>${s.name}</strong></td>
+                        <td>${s.role}</td>
+                        <td><span style="color:#2980b9"><i class="far fa-clock"></i> ${s.shift}</span></td>
+                        <td>${s.permissions.map(p => `<small class="status-badge" style="background:#eee; color:#666; margin-right:2px">${p}</small>`).join('')}</td>
+                        <td>
+                            <button onclick="editStaff(${s.id})" class="btn-gray"><i class="fas fa-edit"></i></button>
+                            <button onclick="deleteStaff(${s.id})" class="btn-red"><i class="fas fa-trash"></i></button>
+                        </td>
+                    </tr>
+                `).join('')}
             </tbody>
         </table>
     `;
     content.innerHTML = html;
 }
+
+window.openStaffModal = function(item = null) {
+    const title = item ? "Chỉnh sửa nhân viên" : "Thêm nhân viên mới";
+    const bodyHtml = `
+        <div class="form-group">
+            <label>Tên nhân viên</label>
+            <input type="text" id="s_name" value="${item ? item.name : ''}">
+        </div>
+        <div class="form-group">
+            <label>Chức vụ</label>
+            <select id="s_role">
+                <option value="Phục vụ" ${item?.role === 'Phục vụ' ? 'selected' : ''}>Phục vụ</option>
+                <option value="Đầu bếp" ${item?.role === 'Đầu bếp' ? 'selected' : ''}>Đầu bếp</option>
+                <option value="Thu ngân" ${item?.role === 'Thu ngân' ? 'selected' : ''}>Thu ngân</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Lịch làm việc (Ca)</label>
+            <select id="s_shift">
+                <option value="Sáng (08:00 - 14:00)">Ca Sáng</option>
+                <option value="Chiều (14:00 - 22:00)">Ca Chiều</option>
+                <option value="Full-time">Cả ngày</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Phân quyền</label>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size:14px;">
+                <label><input type="checkbox" name="perm" value="view_menu"> Xem Menu</label>
+                <label><input type="checkbox" name="perm" value="edit_menu"> Sửa Menu</label>
+                <label><input type="checkbox" name="perm" value="view_report"> Xem Báo cáo</label>
+                <label><input type="checkbox" name="perm" value="manage_table"> Quản lý bàn</label>
+            </div>
+        </div>
+    `;
+
+    showUniversalModal(title, bodyHtml, async () => {
+        const checkboxes = document.querySelectorAll('input[name="perm"]:checked');
+        const selectedPerms = Array.from(checkboxes).map(cb => cb.value);
+        
+        const newStaff = {
+            id: item ? item.id : Date.now(),
+            name: document.getElementById("s_name").value,
+            role: document.getElementById("s_role").value,
+            shift: document.getElementById("s_shift").value,
+            permissions: selectedPerms,
+            status: "Active"
+        };
+
+        if (item) {
+            const index = staffs.findIndex(s => s.id === item.id);
+            staffs[index] = newStaff;
+        } else {
+            staffs.push(newStaff);
+        }
+        
+        renderStaff();
+        alert("Đã cập nhật danh sách nhân sự!");
+    });
+}
+
+window.editStaff = function(id) {
+    const item = staffs.find(s => s.id === id);
+    openStaffModal(item);
+};
+
+window.exportStaffExcel = function() {
+    // Chuẩn bị dữ liệu để xuất
+    const dataToExport = staffs.map(s => ({
+        "Họ Tên": s.name,
+        "Chức Vụ": s.role,
+        "Ca Làm Việc": s.shift
+    }));
+
+    // Tạo worksheet
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "NhanVien");
+
+    // Xuất file
+    XLSX.writeFile(workbook, "Danh_Sach_Nhan_Vien.xlsx");
+};
 // /**
 //  * @param {string} title
 //  * @param {string} bodyHtml

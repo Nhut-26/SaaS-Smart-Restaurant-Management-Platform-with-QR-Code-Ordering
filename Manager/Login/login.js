@@ -211,6 +211,7 @@ async function handleForgotPassword() {
         } else {
             window.location.href = 'customer_home.html';
         }
+        
     }
 
 
