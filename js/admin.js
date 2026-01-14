@@ -21,7 +21,7 @@ function setupNavigation() {
             menuItems.forEach(i => i.classList.remove("active"));
             item.classList.add("active");
             
-            const page = item.dataset.page;
+            const  page = item.dataset.page;
             if (page === "dashboard") renderSystemDashboard();
             if (page === "tenants") renderTenants();
             if (page === "users") renderGlobalUsers();
