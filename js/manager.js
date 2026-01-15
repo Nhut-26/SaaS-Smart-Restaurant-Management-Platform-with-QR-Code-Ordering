@@ -62,9 +62,9 @@ async function renderMenu() {
                     <input type="text" id="searchInput" placeholder="Tìm tên món..." onkeyup="filterMenu()">
                     <select id="categoryFilter" onchange="filterMenu()">
                         <option value="">Tất cả danh mục</option>
-                        <option value="Main Course">Main Course</option>
-                        <option value="Drink">Drink</option>
-                        <option value="Side Dish">Side Dish</option>
+                        <option value="Món chính">Món chính</option>
+                        <option value="Đồ uống">Đồ uống</option>
+                        <option value="Tráng miệng">Tráng miệng</option>
                     </select>
                 </div>
                 <button onclick="openMenuModal()" class="btn-green">+ Thêm món mới</button>
@@ -73,9 +73,12 @@ async function renderMenu() {
                 <thead>
                     <tr>
                         <th>Tên món</th>
-                        <th>Danh mục</th>
                         <th>Giá</th>
-                        <th>Hành động</th>
+                        <th>is_available</th>
+                        <th>Sản phẩm bán chạy</th>
+                        <th>Số lượng hàng tồn kho</th>
+                        <th>Loại món</th>
+                        <th>Mô tả món</th>
                     </tr>
                 </thead>
                 <tbody id="menuTableBody"></tbody>
@@ -99,8 +102,12 @@ function renderTableBody(data) {
     tbody.innerHTML = data.map(f => `
         <tr>
             <td><strong>${f.food_name}</strong></td>
-            <td><span class="status-badge active">${f.category}</span></td>
             <td>${Number(f.price).toLocaleString()}đ</td>
+            <td>${f.is_available ? 'Còn' : 'Hết'}</td>
+            <td>${f.best_seller ? 'Có' : 'Không'}</td>
+            <td>${Number(f.stock_count).toLocaleString()}</td>
+            <td><span class="status-badge active">${f.category}</span></td>
+            <td>${f.description || '---'}</td>
             <td>
                 <button onclick="window.editFood('${f.id}')" class="btn-gray"><i class="fas fa-edit"></i> Sửa</button>
                 <button onclick="window.deleteFood('${f.id}')" class="btn-red"><i class="fas fa-trash"></i> Xóa</button>
@@ -112,15 +119,23 @@ function renderTableBody(data) {
 async function openAddMenuForm() {
     const name = prompt("Nhập tên món ăn:");
     const price = prompt("Nhập giá bán (VNĐ):");
+    const is_available = confirm("Món này còn hàng không? Nhấn 'OK' cho Còn, 'Hủy' cho Hết.");
+    const is_best_seller = confirm("Món này có phải sản phẩm bán chạy không? Nhấn 'Yes' cho Có, 'No' cho Không.");
+    const stock_count = prompt("Nhập số lượng hàng tồn kho:");
     const category = prompt("Nhập loại (Món chính/Đồ uống/Tráng miệng):");
+    const description = prompt("Nhập mô tả món ăn (tùy chọn):");
 
     if (name && price && category) {
         const { error } = await _supabase
             .from('menus')
             .insert([{ 
                 food_name: name, 
-                price: parseInt(price), 
-                category: category
+                price: parseInt(price),
+                is_available: is_available,
+                best_seller: best_seller,
+                stock_quantity: parseInt(stock_quantity),
+                category: category,
+                description: description
             }]);
 
         if (error) {
@@ -161,6 +176,13 @@ window.openMenuForm = function(item = null) {
         <div class="form-group">
             <label>Giá bán</label>
             <input type="number" id="m_price" value="${item ? item.price : ''}">
+        </div>
+        <div class="form-group">
+            <label>Trạng thái</label>
+            <select id="m_status">
+                <option value="true" ${item?.is_available ? 'selected' : ''}>Còn hàng</option>
+                <option value="false" ${!item?.is_available ? 'selected' : ''}>Hết hàng</option>
+            </select>
         </div>
         <div class="form-group">
             <label>Danh mục</label>
