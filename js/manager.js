@@ -68,6 +68,7 @@ async function renderMenu() {
                     </select>
                 </div>
                 <button onclick="openMenuModal()" class="btn-green">+ Thêm món mới</button>
+                <button onclick="openGoogleForm()" class="btn-primary">Nhập từ Google Form</button>
             </div>
             <table>
                 <thead>
@@ -103,7 +104,7 @@ function renderTableBody(data) {
         <tr>
             <td><strong>${f.food_name}</strong></td>
             <td>${Number(f.price).toLocaleString()}đ</td>
-            <td>${f.is_available ? 'Còn' : 'Hết'}</td>
+            <td>${f.is_available ? 'Còn hàng' : 'Hết hàng'}</td>
             <td>${f.best_seller ? 'Có' : 'Không'}</td>
             <td>${Number(f.stock_count).toLocaleString()}</td>
             <td><span class="status-badge active">${f.category}</span></td>
@@ -185,12 +186,26 @@ window.openMenuForm = function(item = null) {
             </select>
         </div>
         <div class="form-group">
+            <label>Sản phẩm bán chạy</label>
+            <select id="m_bestseller">
+                <option value="true" ${item?.best_seller ? 'selected' : ''}>Có</option>
+                <option value="false" ${!item?.best_seller ? 'selected' : ''}>Không</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Số lượng hàng tồn kho</label>
+            <input type="number" id="m_stock" value="${item ? item.stock_count : ''}">
+        </div>
+        <div class="form-group">
             <label>Danh mục</label>
             <select id="m_cat">
                 <option value="Món chính" ${item?.category === 'Món chính' ? 'selected' : ''}>Món chính</option>
                 <option value="Đồ uống" ${item?.category === 'Đồ uống' ? 'selected' : ''}>Đồ uống</option>
             </select>
         </div>
+        <div class="form-group">
+            <label>Mô tả món</label>
+            <textarea id="m_desc" rows="3">${item ? item.description : ''}</textarea>
     `;
 
     showUniversalModal(title, bodyHtml, async () => {
@@ -219,6 +234,23 @@ window.openMenuModal = function(item = null) {
             <input type="number" id="m_price" value="${item ? item.price : ''}">
         </div>
         <div class="form-group">
+            <lable>Có sẵn</lable>
+            <select id="m_available">
+                <option value="true" ${item?.is_available ? 'selected' : ''}>Còn hàng</option>
+                <option value="false" ${!item?.is_available ? 'selected' : ''}>Hết hàng</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Sản phẩm bán chạy</label>
+            <select id="m_bestseller">
+                <option value="true" ${item?.best_seller ? 'selected' : ''}>Có</option>
+                <option value="false" ${!item?.best_seller ? 'selected' : ''}>Không</option>
+        </div>
+        <div class="form-group">
+            <label>Số lượng hàng tồn kho</label>
+            <input type="number" id="m_stock" value="${item ? item.stock_count : ''}">
+        </div>
+        <div class="form-group">
             <label>Danh mục</label>
             <select id="m_cat">
                 <option value="Main Course" ${item?.category === 'Main Course' ? 'selected' : ''}>Món chính</option>
@@ -226,6 +258,9 @@ window.openMenuModal = function(item = null) {
                 <option value="Side Dish" ${item?.category === 'Side Dish' ? 'selected' : ''}>Tráng miệng</option>
             </select>
         </div>
+        <div class="form-group">
+            <label>Mô tả món</label>
+            <textarea id="m_desc" rows="3">${item ? item.description : ''}</textarea>
     `;
 
     showUniversalModal(title, bodyHtml, async () => {
