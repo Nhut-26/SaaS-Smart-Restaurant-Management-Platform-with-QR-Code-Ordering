@@ -1,6 +1,10 @@
 const content = document.getElementById("content");
 const pageTitle = document.getElementById("page-title");
 
+const supabaseUrl = 'https://vhjxxgajenkzuykkqloi.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzQ5ODIyMiwiZXhwIjoyMDgzMDc0MjIyfQ.c6AfU8do1i4pgxiE-1SCrT6OU6Sgj4aSbhB-Rh981MM';
+const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
 // Dữ liệu ảo
 let tenants = [
     { id: 1, name: "Phố Biển", owner: "Nguyễn Văn A", email: "a@mail.com", status: "Active", aiPlan: "pro" },
@@ -9,12 +13,7 @@ let tenants = [
 ];
 let systemStats = { revenue: 150000000, tenants: 45, users: 120 };
 
-let users = [
-    { id: 101, name: "Nguyễn Văn A", restaurant: "Phố Biển", email: "a@mail.com", plan: "monthly", startDate: "2023-10-01", paymentStatus: "paid" },
-    { id: 102, name: "Trần Thị B", restaurant: "Pizza Home", email: "b@mail.com", plan: "yearly", startDate: "2023-05-15", paymentStatus: "paid" },
-    { id: 103, name: "Lê Minh C", restaurant: "Chưa có", email: "c@mail.com", plan: "trial", startDate: "2023-10-20", paymentStatus: "unpaid" },
-    { id: 104, name: "Lê Văn D", restaurant: "Quán Bụi", email: "d@mail.com", plan: "monthly", startDate: "2023-08-01", paymentStatus: "unpaid" } 
-];
+let users = [];
 
 const PLAN_PRICES = {
     'monthly': 299000,
@@ -42,10 +41,10 @@ function setupNavigation() {
             menuItems.forEach(i => i.classList.remove("active"));
             item.classList.add("active");
             
-            const  page = item.dataset.page;
+            const page = item.dataset.page;
             if (page === "dashboard") renderSystemDashboard();
-            if (page === "tenants") renderTenants();
-            if (page === "users") renderGlobalUsers();
+            if (page === "tenants") fetchAndRenderRestaurants();
+            if (page === "users") fetchAndRenderUsers();
             if (page === "ai-config") renderAIConfig();
         });
     });
@@ -75,120 +74,305 @@ function renderSystemDashboard() {
     `;
 }
 
-function renderTenants() {
-    pageTitle.innerText = "Quản lý Đối tác";
+// Nhà hàng
+
+async function fetchAndRenderRestaurants() {
+    pageTitle.innerText = "Đang tải dữ liệu nhà hàng...";
+    
+    try {
+        const { data, error } = await _supabase
+            .from('restaurants') 
+            .select(`
+                *,
+                tenants (
+                    name,
+                    email
+                )
+            `)
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        restaurants = data || [];
+        renderRestaurants(); 
+
+    } catch (err) {
+        console.error("Lỗi tải data:", err);
+        content.innerHTML = `<div class="error-msg">Lỗi: ${err.message}</div>`;
+    }
+}
+
+function renderRestaurants() {
+    pageTitle.innerText = "Quản lý Đối tác (Nhà hàng)";
+
     let html = `
         <div class="page-header">
-            <input type="text" placeholder="Tìm kiếm nhà hàng...">
-            <div style="display:flex; gap:10px;">
-                <button onclick="addTenantManual()" class="btn-green">+ Thêm mới</button>
-                <button onclick="syncFromGoogleForm()" style="background:#f39c12"><i class="fab fa-google"></i> Duyệt Form</button>
-            </div>
+            <input type="text" placeholder="Tìm nhà hàng, chủ sở hữu..." onkeyup="filterRestaurants(this.value)">
+            <button onclick="syncFromGoogleForm()" class="btn-green"><i class="fas fa-sync"></i> Đồng bộ Google Form</button>
         </div>
-        <table>
+        <table class="user-table">
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>Nhà hàng</th>
-                    <th>Chủ sở hữu</th>
-                    <th>Trạng thái</th>
-                    <th>Hành động</th>
+                    <th style="width: 25%;">Thông tin Nhà hàng</th>
+                    <th style="width: 15%;">Loại hình</th>  <th style="width: 15%;">Mức giá</th>    <th style="width: 10%; text-align: center;">Trạng thái</th>
+                    <th style="width: 20%;">Xét duyệt / Khóa</th>
+                    <th style="width: 15%; text-align: right;">Thao tác</th>
                 </tr>
             </thead>
             <tbody>
     `;
-    
-    tenants.forEach(t => {
-        // Xác định class màu sắc dựa trên trạng thái hiện tại
-        const statusClass = t.status.toLowerCase(); 
-        
-        html += `
-            <tr>
-                <td>#${t.id}</td>
-                <td><strong>${t.name}</strong></td>
-                <td>${t.owner}<br><small style="color:#888">${t.email}</small></td>
+
+    if (!restaurants || restaurants.length === 0) {
+        html += `<tr><td colspan="6" style="text-align:center; padding: 20px;">Chưa có dữ liệu nhà hàng.</td></tr>`;
+    } else {
+        restaurants.forEach(r => {
+            const rId = r.id;
+            const rName = r.name || "Chưa đặt tên";
+            const rCuisine = r.cuisine_type || "<span style='color:#bbb'>--</span>";
+            const rPrice = r.price_range || "<span style='color:#bbb'>--</span>";
+
+            const rStatus = r.status || 'Pending';
+            
+            const tenantInfo = r.tenants || {}; 
+            const tOwner = tenantInfo.name || "Unknown";
+            const tEmail = tenantInfo.email || "";
+
+            // Xử lý giao diện trạng thái
+            let rowStyle = "";
+            let badgeHtml = "";
+            
+            if (rStatus === 'Active') {
+                rowStyle = "background-color: #e8f8f5;"; 
+                badgeHtml = `<span style="background:#27ae60; color:white; padding:5px 10px; border-radius:15px; font-size:11px; font-weight:bold;">Active</span>`;
+            } else if (rStatus === 'Locked') {
+                rowStyle = "background-color: #fce4ec;"; 
+                badgeHtml = `<span style="background:#c0392b; color:white; padding:5px 10px; border-radius:15px; font-size:11px; font-weight:bold;">Locked</span>`;
+            } else {
+                rowStyle = "";
+                badgeHtml = `<span style="background:#f39c12; color:white; padding:5px 10px; border-radius:15px; font-size:11px; font-weight:bold;">Pending</span>`;
+            }
+
+            html += `
+            <tr style="${rowStyle} transition: background-color 0.3s;">
                 <td>
-                    <select onchange="updateTenantStatus(${t.id}, this.value)" class="status-select ${statusClass}">
-                        <option value="Active" ${t.status === 'Active' ? 'selected' : ''}>Active</option>
-                        <option value="Pending" ${t.status === 'Pending' ? 'selected' : ''}>Pending</option>
-                        <option value="Locked" ${t.status === 'Locked' ? 'selected' : ''}>Locked</option>
+                    <strong style="font-size: 15px; color: #2c3e50;">${rName}</strong><br>
+                    <div style="margin-top: 5px; color: #555; font-size: 12px;">
+                        <i class="fas fa-user-tie"></i> ${tOwner} <br>
+                        <i class="fas fa-envelope"></i> ${tEmail}
+                    </div>
+                </td>
+                
+                <td style="font-size: 14px; color: #444;">${rCuisine}</td>
+
+                <td style="font-size: 14px; color: #444;">${rPrice}</td>
+
+                <td style="text-align: center; vertical-align: middle;">
+                    ${badgeHtml}
+                </td>
+
+                <td style="vertical-align: middle;">
+                    <select onchange="processRestaurantAction('${rId}', this.value)" 
+                            style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #ddd; font-size: 13px;">
+                        <option value="" disabled selected>-- Chọn --</option>
+                        <option value="Active" style="color: #27ae60; font-weight:bold;">&#10003; Duyệt</option>
+                        <option value="Locked" style="color: #c0392b; font-weight:bold;">&#128274; Khóa</option>
+                        <option value="Pending" style="color: #f39c12;">&#8987; Treo</option>
                     </select>
                 </td>
-                <td>
-                    <button onclick="editTenant(${t.id})" class="btn-gray"><i class="fas fa-pen"></i></button>
-                    <button onclick="deleteTenant(${t.id})" class="btn-red"><i class="fas fa-trash"></i></button>
+
+                <td style="text-align: right; vertical-align: middle;">
+                    <button onclick="editRestaurantInfo('${rId}')" class="btn-gray" title="Sửa thông tin">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <button onclick="deleteRestaurant('${rId}')" class="btn-red" title="Xóa">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </td>
             </tr>
-        `;
-    });
+            `;
+        });
+    }
+
     html += `</tbody></table>`;
     content.innerHTML = html;
 }
 
-function updateTenantStatus(id, newStatus) {
-    const tenant = tenants.find(t => t.id === id);
-    if (tenant) {
-        tenant.status = newStatus;
-        
-        renderTenants();
-        
-        // Thông báo (tùy chọn)
-        console.log(`Đã cập nhật ID #${id} sang trạng thái: ${newStatus}`);
+// --- HÀM XỬ LÝ: STATUS, EDIT, DELETE, SYNC ---
+
+async function processRestaurantAction(id, newStatus) {
+    if (!newStatus) return;
+    if (!confirm("Bạn muốn thay đổi trạng thái nhà hàng này?")) {
+        renderRestaurants(); 
+        return;
+    }
+
+    const restaurant = restaurants.find(r => r.id === id);
+    if (restaurant) {
+        restaurant.status = newStatus;
+        renderRestaurants(); 
+    }
+
+    try {
+        const { error } = await _supabase
+            .from('restaurants')
+            .update({ status: newStatus })
+            .eq('id', id);
+        if (error) throw error;
+    } catch (err) {
+        alert("Lỗi cập nhật: " + err.message);
+        fetchAndRenderRestaurants(); 
+    }
+}
+
+async function editRestaurantInfo(id) {
+    const r = restaurants.find(item => item.id === id);
+    if (!r) return;
+    const currentTenant = r.tenants || {};
+
+    // Prompt lấy thông tin (Thêm 2 mục mới)
+    const newName = prompt("Tên nhà hàng:", r.name);
+    if (newName === null) return;
+    
+    // Thêm prompt cho Loại hình
+    const newCuisine = prompt("Loại hình ẩm thực (VD: Buffet, Lẩu, Cafe...):", r.cuisine_type || "");
+    if (newCuisine === null) return;
+
+    // Thêm prompt cho Mức giá
+    const newPrice = prompt("Mức giá (VD: 100k - 200k):", r.price_range || "");
+    if (newPrice === null) return;
+
+    const newOwner = prompt("Tên chủ sở hữu:", currentTenant.owner);
+    if (newOwner === null) return;
+    const newEmail = prompt("Email:", currentTenant.email);
+    if (newEmail === null) return;
+
+    // Update UI
+    r.name = newName;
+    r.cuisine_type = newCuisine; // Cập nhật biến local
+    r.price_range = newPrice;    // Cập nhật biến local
+    if(r.tenants) { r.tenants.owner = newOwner; r.tenants.email = newEmail; }
+    
+    renderRestaurants();
+
+    // Update DB
+    try {
+        // Update bảng Restaurants (thêm cuisine_type và price_range)
+        await _supabase.from('restaurants').update({ 
+            name: newName,
+            cuisine_type: newCuisine,
+            price_range: newPrice
+        }).eq('id', id);
+
+        // Update bảng Tenants
+        if (r.tenant_id) {
+            await _supabase.from('tenants').update({ owner: newOwner, email: newEmail }).eq('id', r.tenant_id);
+        }
+        alert("Đã lưu thông tin!");
+    } catch (err) {
+        alert("Lỗi khi lưu: " + err.message);
+        fetchAndRenderRestaurants();
+    }
+}
+
+async function deleteRestaurant(id) {
+    if (!confirm("Bạn có chắc muốn xóa vĩnh viễn?")) return;
+    try {
+        const { error } = await _supabase.from('restaurants').delete().eq('id', id);
+        if (error) throw error;
+        restaurants = restaurants.filter(r => r.id !== id);
+        renderRestaurants();
+    } catch (err) {
+        alert("Không thể xóa: " + err.message);
     }
 }
 
 async function syncFromGoogleForm() {
-    const API_URL = "https://sheetdb.io/api/v1/lwt1l44qsuwxo"; 
+    // Logic: Tạo Tenant -> Lấy ID -> Tạo Restaurant
+    const API_URL = "https://sheetdb.io/api/v1/lwt1l44qsuwxo";
+    const btn = document.querySelector(".btn-green");
+    if(btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
+
     try {
-        const btn = event.target;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tải...';
-        
         const response = await fetch(API_URL);
-        const data = await response.json();
-        
-        let count = 0;
-        data.forEach(item => {
-            if (!tenants.some(t => t.email === item["Email"])) {
-                tenants.push({
-                    id: tenants.length + 1,
-                    name: item["Tên nhà hàng"] || "No Name",
-                    owner: item["Tên chủ sở hữu"] || "Unknown",
-                    email: item["Email"],
-                    status: "Pending"
-                });
-                count++;
+        const sheetData = await response.json();
+        let newCount = 0;
+
+        for (const item of sheetData) {
+            const email = item["Email"];
+            if (!email) continue;
+            const exists = restaurants.some(r => r.tenants && r.tenants.email === email);
+            
+            if (!exists) {
+                // Tạo Tenant
+                const { data: tenantData, error: tErr } = await _supabase
+                    .from('tenants')
+                    .insert({ owner: item["Tên chủ sở hữu"] || "Unknown", email: email })
+                    .select().single();
+
+                if (!tErr) {
+                    // Tạo Restaurant
+                    await _supabase.from('restaurants').insert({
+                        name: item["Tên nhà hàng"] || "Nhà hàng mới",
+                        status: "Pending",
+                        tenant_id: tenantData.id,
+                        // Mặc định cho 2 cột mới khi sync từ form (vì form chưa có cột này)
+                        cuisine_type: "Chưa cập nhật", 
+                        price_range: "Chưa cập nhật"
+                    });
+                    newCount++;
+                }
             }
-        });
-        
-        renderTenants();
-        alert(`Đã đồng bộ thành công! Tìm thấy ${count} nhà hàng mới.`);
+        }
+        alert(`Đồng bộ xong! Thêm mới: ${newCount}`);
+        fetchAndRenderRestaurants();
     } catch (e) {
-        alert("Lỗi kết nối API Google Sheets!");
+        alert("Lỗi kết nối!");
         console.error(e);
+        if(btn) btn.innerHTML = '<i class="fas fa-sync"></i> Đồng bộ Google Form';
     }
 }
 
-function addTenantManual() {}
-function deleteTenant(id) {}
-function toggleStatus(id) {}
+function filterRestaurants(keyword) {
+    const term = keyword.toLowerCase();
+    const rows = document.querySelectorAll("tbody tr");
+    rows.forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(term) ? "" : "none";
+    });
+}
 
 //user
+async function fetchAndRenderUsers() {
+    pageTitle.innerText = "Đang tải dữ liệu...";
+    try {
+        const { data, error } = await _supabase
+            .from('tenants')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        users = data || [];
+        renderGlobalUsers();
+    } catch (err) {
+        console.error("Lỗi tải users:", err);
+        content.innerHTML = `<div class="error-msg">Lỗi kết nối: ${err.message}</div>`;
+    }
+}
+
 function renderGlobalUsers() {
-    pageTitle.innerText = "Quản lý Người dùng";
+    pageTitle.innerText = "Quản lý Người dùng & Doanh thu";
     
     let html = `
         <div class="page-header">
-            <input type="text" placeholder="Tìm kiếm người dùng...">
+            <input type="text" placeholder="Tìm kiếm tên, email..." onkeyup="filterUsers(this.value)">
             <button onclick="addUser()" class="btn-green">+ Thêm User</button>
         </div>
         <table class="user-table">
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>Người dùng</th>
-                    <th>Gói thuê</th>
-                    <th>Giá trị</th>
-                    <th>Thanh toán</th> <th>Hành động</th>
+                    <th>Thông tin User</th> <th>Gói Dịch Vụ</th>
+                    <th>Giá Trị</th>
+                    <th>Thanh Toán</th>
+                    <th>Hành động</th>
                 </tr>
             </thead>
             <tbody>
@@ -196,123 +380,184 @@ function renderGlobalUsers() {
 
     const today = new Date();
 
-    users.forEach(u => {
-        const expiryDateStr = calculateExpiryDate(u.startDate, u.plan);
-        const [d, m, y] = expiryDateStr.split('/');
-        const expiryDateObj = new Date(`${y}-${m}-${d}`);
-        
-        const isExpired = expiryDateObj < today;
-        const expiredLabel = isExpired ? `<div class="expired-tag">QUÁ HẠN</div>` : '';
-        const dateColor = isExpired ? 'color: #d32f2f; font-weight: bold;' : 'color: #555;';
+    if (!users || users.length === 0) {
+        html += `<tr><td colspan="5" style="text-align:center; padding: 20px;">Chưa có dữ liệu.</td></tr>`;
+    } else {
+        users.forEach(u => {
+            // Lấy ID để xử lý logic (nhưng không hiển thị ra UI)
+            const uId = u.id; 
+            
+            const uName = u.name || "Chưa đặt tên";
+            const uEmail = u.email || "No Email";
+            // Nếu package trong DB là trial hoặc null, mặc định hiển thị là monthly để tránh lỗi select box
+            let uPackage = u.package;
+            if (!PLAN_PRICES[uPackage]) uPackage = 'monthly'; 
 
-        const rowClass = u.paymentStatus === 'paid' ? 'row-paid' : 'row-unpaid';
+            const uStatus = u.status || "unpaid";
+            
+            // Xử lý ngày tháng
+            let expiryDateObj;
+            let expiryDateStr;
 
-        html += `
-            <tr class="${rowClass}">
-                <td>#${u.id}</td>
-                <td>
-                    <strong>${u.name}</strong><br>
-                    <small>${u.email}</small>
-                    <div style="font-size:11px; color:#666; margin-top:2px;">${u.restaurant}</div>
-                </td>
-                <td>
-                    <select onchange="updateUserPlan(${u.id}, this.value)" class="plan-select ${u.plan}" style="margin-bottom:5px;">
-                        <option value="monthly" ${u.plan === 'monthly' ? 'selected' : ''}>Theo Tháng</option>
-                        <option value="quarterly" ${u.plan === 'quarterly' ? 'selected' : ''}>Theo Quý</option>
-                        <option value="yearly" ${u.plan === 'yearly' ? 'selected' : ''}>Theo Năm</option>
-                        <option value="trial" ${u.plan === 'trial' ? 'selected' : ''}>Dùng thử</option>
-                    </select>
-                    
-                    <div style="font-size:11px; line-height: 1.4;">
-                        Start: ${formatDate(u.startDate)} <br>
-                        <span style="${dateColor}">End: ${expiryDateStr} ${expiredLabel}</span>
-                    </div>
-                </td>
-                
-                <td>
-                    <strong style="font-size:15px; color:#2c3e50;">
-                        ${PLAN_PRICES[u.plan].toLocaleString('vi-VN')}đ
-                    </strong>
-                </td>
+            // Ưu tiên lấy expired_at từ DB
+            if (u.expired_at) {
+                expiryDateObj = new Date(u.expired_at);
+                expiryDateStr = formatDate(expiryDateObj);
+            } else {
+                // Nếu chưa có thì tính tạm
+                expiryDateStr = calculateExpiryDate(new Date(u.created_at || new Date()), uPackage);
+                const [d, m, y] = expiryDateStr.split('/');
+                expiryDateObj = new Date(`${y}-${m}-${d}`);
+            }
 
-                <td>
-                    <select onchange="updatePaymentStatus(${u.id}, this.value)" class="payment-select ${u.paymentStatus}">
-                        <option value="paid" ${u.paymentStatus === 'paid' ? 'selected' : ''}>Đã thanh toán</option>
-                        <option value="unpaid" ${u.paymentStatus === 'unpaid' ? 'selected' : ''}>Chưa thanh toán</option>
-                    </select>
-                </td>
+            const isExpired = expiryDateObj < today;
+            const expiredLabel = isExpired ? `<span class="expired-tag">QUÁ HẠN</span>` : '';
+            const dateStyle = isExpired ? 'color:#d32f2f; font-weight:bold;' : 'color:#27ae60; font-weight:bold;';
 
-                <td>
-                    <button onclick="editUser(${u.id})" class="btn-gray"><i class="fas fa-pen"></i></button>
-                    <button onclick="deleteUser(${u.id})" class="btn-red"><i class="fas fa-trash"></i></button>
-                </td>
-            </tr>
-        `;
-    });
+            const rowClass = uStatus === 'paid' ? 'row-paid' : 'row-unpaid';
+            const price = (PLAN_PRICES[uPackage] || 0).toLocaleString('vi-VN');
+
+            html += `
+                <tr class="${rowClass}">
+                    <td style="max-width: 250px;">
+                        <strong>${uName}</strong><br>
+                        <small style="color:#666">${uEmail}</small>
+                        </td>
+                    <td>
+                        <select onchange="updateUserPackage('${uId}', this.value)" class="plan-select ${uPackage}">
+                            <option value="monthly" ${uPackage === 'monthly' ? 'selected' : ''}>MONTHLY</option>
+                            <option value="quarterly" ${uPackage === 'quarterly' ? 'selected' : ''}>QUARTERLY</option>
+                            <option value="yearly" ${uPackage === 'yearly' ? 'selected' : ''}>YEARLY</option>
+                            </select>
+                        <div style="font-size:11px; margin-top:5px; line-height: 1.4;">
+                            <span style="${dateStyle}">Hết hạn: ${expiryDateStr} ${expiredLabel}</span>
+                        </div>
+                    </td>
+                    <td><strong style="font-size:15px; color:#2c3e50;">${price}đ</strong></td>
+                    <td>
+                        <select onchange="updatePaymentStatus('${uId}', this.value)" class="payment-select ${uStatus}">
+                            <option value="paid" ${uStatus === 'paid' ? 'selected' : ''}>Đã thanh toán</option>
+                            <option value="unpaid" ${uStatus !== 'paid' ? 'selected' : ''}>Chưa thanh toán</option>
+                        </select>
+                    </td>
+                    <td>
+                        <button onclick="deleteUser('${uId}')" class="btn-red"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `;
+        });
+    }
 
     html += `</tbody></table>`;
     content.innerHTML = html;
 }
 
-function updateUserPlan(id, newPlan) {
+
+async function updateUserPackage(id, newPackage) {
+    if (!id) {
+        alert("Lỗi: Không tìm thấy ID người dùng!");
+        return;
+    }
+
+    // 1. Tính ngày hết hạn MỚI dựa trên thời điểm hiện tại
+    const now = new Date();
+    let newExpiryDate = new Date(now);
+
+    // Logic cộng ngày (Đã bỏ trial)
+    if (newPackage === 'monthly') {
+        newExpiryDate.setMonth(newExpiryDate.getMonth() + 1);
+    } else if (newPackage === 'quarterly') {
+        newExpiryDate.setMonth(newExpiryDate.getMonth() + 3);
+    } else if (newPackage === 'yearly') {
+        newExpiryDate.setFullYear(newExpiryDate.getFullYear() + 1);
+    } else {
+        // Fallback: Nếu lỗi thì mặc định 1 tháng để tránh crash
+        newExpiryDate.setMonth(newExpiryDate.getMonth() + 1);
+    }
+
+    const expiryISOString = newExpiryDate.toISOString();
+
+    // 2. Cập nhật UI ngay lập tức
     const user = users.find(u => u.id === id);
     if (user) {
-        user.plan = newPlan;
-        user.startDate = new Date().toISOString().split('T')[0]; 
-        
+        user.package = newPackage;
+        user.expired_at = expiryISOString;
         renderGlobalUsers();
-        console.log(`User #${id} đã đổi sang gói: ${newPlan}`);
+    }
+
+    // 3. Gửi lên Supabase
+    try {
+        const { error } = await _supabase
+            .from('tenants')
+            .update({ 
+                package: newPackage,
+                expired_at: expiryISOString 
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+        console.log(`Đã lưu gói mới cho user ${id}`);
+    } catch (err) {
+        alert(`Lỗi khi lưu dữ liệu: ${err.message}`);
+        fetchAndRenderUsers(); // Tải lại data gốc nếu lỗi
     }
 }
 
-function calculateExpiryDate(startDateStr, plan) {
-    const date = new Date(startDateStr);
-    
-    if (plan === 'monthly') date.setMonth(date.getMonth() + 1);
-    else if (plan === 'quarterly') date.setMonth(date.getMonth() + 3);
-    else if (plan === 'yearly') date.setFullYear(date.getFullYear() + 1);
-    else if (plan === 'trial') date.setDate(date.getDate() + 7);
-    
-    return formatDate(date.toISOString().split('T')[0]);
+async function updatePaymentStatus(id, newStatus) {
+    const user = users.find(u => u.id === id);
+    if (user) {
+        user.status = newStatus;
+        renderGlobalUsers();
+    }
+    const { error } = await _supabase.from('tenants').update({ status: newStatus }).eq('id', id);
+    if (error) {
+        alert("Lỗi cập nhật trạng thái!");
+        fetchAndRenderUsers();
+    }
 }
 
-function formatDate(dateStr) {
-    const [year, month, day] = dateStr.split('-');
+async function deleteUser(id) {
+    if (!confirm("Bạn có chắc muốn xóa vĩnh viễn user này?")) return;
+    const { error } = await _supabase.from('tenants').delete().eq('id', id);
+    if (error) alert("Không xóa được!");
+    else {
+        alert("Đã xóa thành công!");
+        fetchAndRenderUsers();
+    }
+}
+
+
+function formatDate(dateObj) {
+    if (!dateObj || isNaN(dateObj.getTime())) return "N/A";
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
     return `${day}/${month}/${year}`;
 }
 
-function getPlanLabel(plan) {
-    const map = {
-        'monthly': 'Theo Tháng',
-        'quarterly': 'Theo Quý',
-        'yearly': 'Theo Năm',
-        'trial': 'Dùng thử'
-    };
-    return map[plan] || plan;
+function calculateExpiryDate(startDateObj, plan) {
+    // Hàm này chỉ dùng để hiển thị nếu DB chưa có expired_at
+    const date = new Date(startDateObj.getTime());
+    if (isNaN(date.getTime())) return formatDate(new Date());
+
+    if (plan === 'monthly') date.setMonth(date.getMonth() + 1);
+    else if (plan === 'quarterly') date.setMonth(date.getMonth() + 3);
+    else if (plan === 'yearly') date.setFullYear(date.getFullYear() + 1);
+    // Mặc định trả về 1 tháng nếu không khớp
+    else date.setMonth(date.getMonth() + 1);
+    
+    return formatDate(date);
 }
 
-function deleteUser(id) {
-    if(confirm("Bạn có chắc muốn xóa người dùng này?")) {
-        users = users.filter(u => u.id !== id);
-        renderGlobalUsers();
-    }
+function filterUsers(keyword) {
+    const term = keyword.toLowerCase();
+    const rows = document.querySelectorAll(".user-table tbody tr");
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(term) ? "" : "none";
+    });
 }
 
-function editUser(id) {
-    alert(`Tính năng chỉnh sửa user ID: ${id} đang phát triển modal.`);
-}
-
-function addUser() {
-    alert("Tính năng thêm user đang phát triển.");
-}
-
-function updatePaymentStatus(id, newStatus) {
-    const user = users.find(u => u.id === id);
-    if (user) {
-        user.paymentStatus = newStatus;
-        renderGlobalUsers();
-    }
-}
 
 function renderAIConfig() {
     pageTitle.innerText = "Cấu hình AI & Cấp phát tài nguyên";

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập & Đăng ký</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        /* CSS GIAO DIỆN */
+        :root { --primary-color: #d35400; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #f4f4f4 url('https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070&auto=format&fit=crop') no-repeat center center/cover;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            width: 350px;
+            text-align: center;
+        }
+        input {
+            width: 100%; padding: 12px; margin: 10px 0;
+            border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;
+        }
+        button {
+            width: 100%; padding: 12px;
+            background: var(--primary-color); color: white;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
+        }
+        button:hover { background-color: #a04000; }
+        
+        /* QUAN TRỌNG: Class ẩn form */
+        .hidden { display: none !important; }
+        
+        .toggle-link { margin-top: 15px; font-size: 0.9rem; }
+        .toggle-link span {
+            color: var(--primary-color); cursor: pointer; text-decoration: underline; font-weight: bold;
+        }
+        #message { margin-top: 10px; padding: 10px; display: none; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="login-form">
+            <h2>Đăng Nhập</h2>
+            <form id="form-login-submit">
+                <input type="email" id="login-email" required placeholder="Email đăng nhập">
+                <input type="password" id="login-pass" required placeholder="Mật khẩu">
+                <button type="submit">Đăng Nhập</button>
+            </form>
+            <div class="toggle-link">
+                Chưa có tài khoản? <span id="btn-show-register">Đăng ký ngay</span>
+            </div>
+        </div>
+
+        <div id="register-form" class="hidden">
+            <h2>Đăng Ký</h2>
+            <form id="form-register-submit">
+                <input type="text" id="reg-name" required placeholder="Tên nhà hàng / Người dùng">
+                <input type="email" id="reg-email" required placeholder="Email đăng ký">
+                <input type="password" id="reg-pass" required placeholder="Mật khẩu">
+                <button type="submit">Đăng Ký</button>
+            </form>
+            <div class="toggle-link">
+                Đã có tài khoản? <span id="btn-show-login">Quay lại Đăng nhập</span>
+            </div>
+        </div>
+
+        <div id="message"></div>
+    </div>
+
+    <script>
+        // 1. CẤU HÌNH SUPABASE (Đã thay tên biến để tránh lỗi trùng lặp)
+        const SUPABASE_URL = 'https://vhjxxgajenkzuykkqloi.supabase.co';
+        // Hãy chắc chắn đây là ANON KEY (Public Key)
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzQ5ODIyMiwiZXhwIjoyMDgzMDc0MjIyfQ.c6AfU8do1i4pgxiE-1SCrT6OU6Sgj4aSbhB-Rh981MM'; 
+
+        // Đổi tên biến thành supaClient để an toàn tuyệt đối
+        const supaClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // 2. LẤY CÁC THẺ HTML
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const msgBox = document.getElementById('message');
+        
+        // 3. HÀM HIỂN THỊ THÔNG BÁO
+        function showMessage(text, type) {
+            msgBox.innerText = text;
+            msgBox.className = type;
+            msgBox.style.display = 'block';
+        }
+
+        // 4. XỬ LÝ CHUYỂN ĐỔI FORM (CLICK ĐĂNG KÝ)
+        const btnToRegister = document.getElementById('btn-show-register');
+        const btnToLogin = document.getElementById('btn-show-login');
+
+        btnToRegister.addEventListener('click', () => {
+            console.log("Đã click nút Đăng Ký Ngay"); // Kiểm tra ở Console
+            loginForm.classList.add('hidden');
+            registerForm.classList.remove('hidden');
+            msgBox.style.display = 'none';
+        });
+
+        btnToLogin.addEventListener('click', () => {
+            console.log("Đã click nút Quay lại");
+            loginForm.classList.remove('hidden');
+            registerForm.classList.add('hidden');
+            msgBox.style.display = 'none';
+        });
+
+        // 5. XỬ LÝ SUBMIT ĐĂNG KÝ
+        document.getElementById('form-register-submit').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            console.log("Bắt đầu đăng ký...");
+            
+            const name = document.getElementById('reg-name').value;
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-pass').value;
+
+            showMessage("Đang xử lý...", "success");
+
+            // Gọi API Supabase
+            const { data: authData, error: authError } = await supaClient.auth.signUp({
+                email: email,
+                password: password
+            });
+
+            if (authError) {
+                console.error(authError);
+                showMessage("Lỗi: " + authError.message, 'error');
+                return;
+            }
+
+            // Lưu vào bảng tenants
+            if (authData.user) {
+                const { error: dbError } = await supaClient
+                    .from('tenants')
+                    .insert([{ 
+                        id: authData.user.id, 
+                        name: name, 
+                        email: email 
+                    }]);
+                
+                if (dbError) {
+                    console.error(dbError); // Xem lỗi chi tiết ở Console nếu có
+                    showMessage("Đăng ký User xong nhưng lỗi lưu tên: " + dbError.message, 'error');
+                } else {
+                    showMessage("Đăng ký thành công! Hãy kiểm tra email.", 'success');
+                    document.getElementById('form-register-submit').reset();
+                }
+            }
+        });
+
+        // 6. XỬ LÝ SUBMIT ĐĂNG NHẬP
+        document.getElementById('form-login-submit').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-pass').value;
+
+            showMessage("Đang đăng nhập...", "success");
+
+            const { data, error } = await supaClient.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                showMessage("Đăng nhập thất bại: " + error.message, 'error');
+            } else {
+                showMessage("Đăng nhập thành công!", 'success');
+                setTimeout(() => alert("Chào mừng quay trở lại!"), 500);
+            }
+        });
+    </script>
+</body>
+</html>

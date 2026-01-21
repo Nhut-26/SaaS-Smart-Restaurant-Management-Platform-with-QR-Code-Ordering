@@ -75,7 +75,7 @@ async function renderMenu() {
                     <tr>
                         <th>Tên món</th>
                         <th>Giá</th>
-                        <th>is_available</th>
+                        <th>Trạng thái</th>
                         <th>Sản phẩm bán chạy</th>
                         <th>Số lượng hàng tồn kho</th>
                         <th>Loại món</th>
