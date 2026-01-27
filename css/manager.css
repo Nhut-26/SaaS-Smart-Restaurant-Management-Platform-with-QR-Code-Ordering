@@ -234,6 +234,40 @@ button { background-color: var(--manager-primary); }
     overflow-y: auto;
 }
 
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+}
+
+.left-tools,
+.right-tools {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* Thêm menu form */
+.menu-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.menu-form-grid .form-group.full {
+    grid-column: span 2;
+}
+
+.menu-form-grid input,
+.menu-form-grid select,
+.menu-form-grid textarea {
+    width: 100%;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+}
+
 .finance-table th { position: sticky; top: 0; z-index: 10; background: #f8f9fa; }
 .text-green { color: #27ae60; font-weight: bold; }
 .text-red { color: #c0392b; font-weight: bold; }

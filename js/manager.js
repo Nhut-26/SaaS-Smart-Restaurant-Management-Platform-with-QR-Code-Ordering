@@ -58,7 +58,7 @@ async function renderMenu() {
         // Vẽ thanh công cụ (Search & Filter)
         content.innerHTML = `
             <div class="page-header">
-                <div style="display:flex; gap:10px;">
+                <div class="left-tools">
                     <input type="text" id="searchInput" placeholder="Tìm tên món..." onkeyup="filterMenu()">
                     <select id="categoryFilter" onchange="filterMenu()">
                         <option value="">Tất cả danh mục</option>
@@ -67,8 +67,10 @@ async function renderMenu() {
                         <option value="Tráng miệng">Tráng miệng</option>
                     </select>
                 </div>
-                <button onclick="openMenuModal()" class="btn-green">+ Thêm món mới</button>
-                <button onclick="openGoogleForm()" class="btn-primary">Nhập từ Google Form</button>
+                <div class="right-tools">
+                    <button onclick="openMenuModal()" class="btn-green">+ Thêm món mới</button>
+                    <button onclick="openGoogleForm()" class="btn-primary">Nhập từ Google Form</button>
+                </div>
             </div>
             <table>
                 <thead>
@@ -224,44 +226,55 @@ window.openMenuForm = function(item = null) {
 
 window.openMenuModal = function(item = null) {
     const title = item ? "Chỉnh sửa món ăn" : "Thêm món mới";
-    const bodyHtml = `
-        <div class="form-group">
-            <label>Tên món</label>
-            <input type="text" id="m_name" value="${item ? item.food_name : ''}">
-        </div>
-        <div class="form-group">
-            <label>Giá bán</label>
-            <input type="number" id="m_price" value="${item ? item.price : ''}">
-        </div>
-        <div class="form-group">
-            <lable>Có sẵn</lable>
-            <select id="m_available">
-                <option value="true" ${item?.is_available ? 'selected' : ''}>Còn hàng</option>
-                <option value="false" ${!item?.is_available ? 'selected' : ''}>Hết hàng</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Sản phẩm bán chạy</label>
-            <select id="m_bestseller">
-                <option value="true" ${item?.best_seller ? 'selected' : ''}>Có</option>
-                <option value="false" ${!item?.best_seller ? 'selected' : ''}>Không</option>
-        </div>
-        <div class="form-group">
-            <label>Số lượng hàng tồn kho</label>
-            <input type="number" id="m_stock" value="${item ? item.stock_count : ''}">
-        </div>
-        <div class="form-group">
-            <label>Danh mục</label>
-            <select id="m_cat">
-                <option value="Main Course" ${item?.category === 'Main Course' ? 'selected' : ''}>Món chính</option>
-                <option value="Drink" ${item?.category === 'Drink' ? 'selected' : ''}>Đồ uống</option>
-                <option value="Side Dish" ${item?.category === 'Side Dish' ? 'selected' : ''}>Tráng miệng</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Mô tả món</label>
-            <textarea id="m_desc" rows="3">${item ? item.description : ''}</textarea>
-    `;
+const bodyHtml = `
+<div class="menu-form-grid">
+    <div class="form-group">
+        <label>Tên món</label>
+        <input type="text" id="m_name" placeholder="Ví dụ: Phở bò đặc biệt">
+    </div>
+
+    <div class="form-group">
+        <label>Giá bán (VNĐ)</label>
+        <input type="number" id="m_price" placeholder="60000">
+    </div>
+
+    <div class="form-group">
+        <label>Trạng thái</label>
+        <select id="m_available">
+            <option value="true">Còn hàng</option>
+            <option value="false">Hết hàng</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Bán chạy</label>
+        <select id="m_bestseller">
+            <option value="false">Không</option>
+            <option value="true">Có</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Tồn kho</label>
+        <input type="number" id="m_stock" value="0">
+    </div>
+
+    <div class="form-group">
+        <label>Danh mục</label>
+        <select id="m_cat">
+            <option value="Main Course">Món chính</option>
+            <option value="Drink">Đồ uống</option>
+            <option value="Side Dish">Món phụ</option>
+        </select>
+    </div>
+
+    <div class="form-group full">
+        <label>Mô tả món</label>
+        <textarea id="m_desc" rows="3" placeholder="Mô tả ngắn gọn..."></textarea>
+    </div>
+</div>
+`;
+
 
     showUniversalModal(title, bodyHtml, async () => {
         const payload = {
@@ -279,51 +292,78 @@ window.openMenuModal = function(item = null) {
     });
 }
 
-window.editFood = function(id) {
-    console.log("Đang click sửa ID:", id);
-    console.log("Danh sách hiện tại:", allFoods);
+window.editFood = function (id) {
     const item = allFoods.find(f => f.id == id);
-    
     if (!item) {
-        alert("Lỗi: Không tìm thấy dữ liệu món ăn.");
+        alert("Không tìm thấy món ăn");
         return;
     }
 
-    openMenuModal(item);
-
     const bodyHtml = `
-        <div class="form-group" style="margin-bottom: 15px;">
+        <div class="form-group">
             <label>Tên món</label>
-            <input type="text" id="edit_m_name" value="${item.food_name}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            <input type="text" id="m_name" value="${item.food_name}">
         </div>
-        <div class="form-group" style="margin-bottom: 15px;">
-            <label>Giá bán (VNĐ)</label>
-            <input type="number" id="edit_m_price" value="${item.price}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+
+        <div class="form-group">
+            <label>Giá bán</label>
+            <input type="number" id="m_price" value="${item.price}">
         </div>
-        <div class="form-group" style="margin-bottom: 15px;">
-            <label>Danh mục</label>
-            <select id="edit_m_cat" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
-                <option value="Món chính" ${item.category === 'Món chính' ? 'selected' : ''}>Món chính</option>
-                <option value="Đồ uống" ${item.category === 'Đồ uống' ? 'selected' : ''}>Đồ uống</option>
-                <option value="Tráng miệng" ${item.category === 'Tráng miệng' ? 'selected' : ''}>Tráng miệng</option>
+
+        <div class="form-group">
+            <label>Trạng thái</label>
+            <select id="m_available">
+                <option value="true" ${item.is_available ? "selected" : ""}>Còn hàng</option>
+                <option value="false" ${!item.is_available ? "selected" : ""}>Hết hàng</option>
             </select>
+        </div>
+
+        <div class="form-group">
+            <label>Bán chạy</label>
+            <select id="m_bestseller">
+                <option value="true" ${item.best_seller ? "selected" : ""}>Có</option>
+                <option value="false" ${!item.best_seller ? "selected" : ""}>Không</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Tồn kho</label>
+            <input type="number" id="m_stock" value="${item.stock_count}">
+        </div>
+
+        <div class="form-group">
+            <label>Danh mục</label>
+            <select id="m_cat">
+                <option value="Món chính" ${item.category === "Món chính" ? "selected" : ""}>Món chính</option>
+                <option value="Đồ uống" ${item.category === "Đồ uống" ? "selected" : ""}>Đồ uống</option>
+                <option value="Tráng miệng" ${item.category === "Tráng miệng" ? "selected" : ""}>Tráng miệng</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Mô tả</label>
+            <textarea id="m_desc">${item.description || ""}</textarea>
         </div>
     `;
 
-    window.showUniversalModal("Chỉnh sửa món ăn", bodyHtml, async () => {
-        const updatedData = {
-            food_name: document.getElementById("edit_m_name").value,
-            price: parseInt(document.getElementById("edit_m_price").value),
-            category: document.getElementById("edit_m_cat").value
+    showUniversalModal("Chỉnh sửa món ăn", bodyHtml, async () => {
+        const payload = {
+            food_name: document.getElementById("m_name").value,
+            price: Number(document.getElementById("m_price").value),
+            is_available: document.getElementById("m_available").value === "true",
+            best_seller: document.getElementById("m_bestseller").value === "true",
+            stock_count: Number(document.getElementById("m_stock").value),
+            category: document.getElementById("m_cat").value,
+            description: document.getElementById("m_desc").value
         };
 
         const { error } = await _supabase
-            .from('menus')
-            .update(updatedData)
-            .eq('id', id);
+            .from("menus")
+            .update(payload)
+            .eq("id", id);
 
         if (error) {
-            alert("Lỗi khi lưu: " + error.message);
+            alert("Lỗi cập nhật: " + error.message);
         } else {
             alert("Cập nhật thành công!");
             renderMenu();
