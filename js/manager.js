@@ -135,8 +135,8 @@ async function openAddMenuForm() {
                 food_name: name, 
                 price: parseInt(price),
                 is_available: is_available,
-                best_seller: best_seller,
-                stock_quantity: parseInt(stock_quantity),
+                best_seller: is_best_seller,
+                stock_quantity: parseInt(stock_count),
                 category: category,
                 description: description
             }]);
@@ -149,6 +149,14 @@ async function openAddMenuForm() {
         }
     }
 }
+
+window.openGoogleForm = function () {
+    const googleFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSf11jRU--bDm2ljTo4sU63NB99xSUZhOJJ6J10otOsteYChyg/viewform?usp=sharing&ouid=100819579657779759050";
+
+    // Mở Google Form ở tab mới
+    window.open(googleFormUrl, "_blank");
+};
+
 
 window.deleteFood = async function(id) {
     const isConfirm = confirm("Bạn có chắc chắn muốn xóa món này không?");
@@ -203,6 +211,7 @@ window.openMenuForm = function(item = null) {
             <select id="m_cat">
                 <option value="Món chính" ${item?.category === 'Món chính' ? 'selected' : ''}>Món chính</option>
                 <option value="Đồ uống" ${item?.category === 'Đồ uống' ? 'selected' : ''}>Đồ uống</option>
+                <option value="Tráng miệng" ${item?.category === 'Tráng miệng' ? 'selected' : ''}>Tráng miệng</option>
             </select>
         </div>
         <div class="form-group">
@@ -226,7 +235,7 @@ window.openMenuForm = function(item = null) {
 
 window.openMenuModal = function(item = null) {
     const title = item ? "Chỉnh sửa món ăn" : "Thêm món mới";
-const bodyHtml = `
+    const bodyHtml = `
 <div class="menu-form-grid">
     <div class="form-group">
         <label>Tên món</label>
@@ -262,9 +271,9 @@ const bodyHtml = `
     <div class="form-group">
         <label>Danh mục</label>
         <select id="m_cat">
-            <option value="Main Course">Món chính</option>
-            <option value="Drink">Đồ uống</option>
-            <option value="Side Dish">Món phụ</option>
+            <option value="Món chính">Món chính</option>
+            <option value="Đồ uống">Đồ uống</option>
+            <option value="Tráng miệng">Tráng miệng</option>
         </select>
     </div>
 
@@ -274,7 +283,6 @@ const bodyHtml = `
     </div>
 </div>
 `;
-
 
     showUniversalModal(title, bodyHtml, async () => {
         const payload = {
@@ -292,10 +300,13 @@ const bodyHtml = `
     });
 }
 
-window.editFood = function (id) {
+window.editFood = function(id) {
+    console.log("Đang click sửa ID:", id);
+    console.log("Danh sách hiện tại:", allFoods);
     const item = allFoods.find(f => f.id == id);
+    
     if (!item) {
-        alert("Không tìm thấy món ăn");
+        alert("Lỗi: Không tìm thấy dữ liệu món ăn.");
         return;
     }
 
@@ -346,24 +357,20 @@ window.editFood = function (id) {
         </div>
     `;
 
-    showUniversalModal("Chỉnh sửa món ăn", bodyHtml, async () => {
-        const payload = {
-            food_name: document.getElementById("m_name").value,
-            price: Number(document.getElementById("m_price").value),
-            is_available: document.getElementById("m_available").value === "true",
-            best_seller: document.getElementById("m_bestseller").value === "true",
-            stock_count: Number(document.getElementById("m_stock").value),
-            category: document.getElementById("m_cat").value,
-            description: document.getElementById("m_desc").value
+    window.showUniversalModal("Chỉnh sửa món ăn", bodyHtml, async () => {
+        const updatedData = {
+            food_name: document.getElementById("edit_m_name").value,
+            price: parseInt(document.getElementById("edit_m_price").value),
+            category: document.getElementById("edit_m_cat").value
         };
 
         const { error } = await _supabase
-            .from("menus")
-            .update(payload)
-            .eq("id", id);
+            .from('menus')
+            .update(updatedData)
+            .eq('id', id);
 
         if (error) {
-            alert("Lỗi cập nhật: " + error.message);
+            alert("Lỗi khi lưu: " + error.message);
         } else {
             alert("Cập nhật thành công!");
             renderMenu();
