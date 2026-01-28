@@ -7,7 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
-        /* CSS GIAO DIỆN */
+        /*Giao Diện*/
         :root { --primary-color: #d35400; }
         body {
             font-family: 'Segoe UI', sans-serif;
@@ -50,7 +50,7 @@
     </style>
 </head>
 <body>
-
+      
     <div class="container">
         <div id="login-form">
             <h2>Đăng Nhập</h2>
@@ -76,112 +76,11 @@
                 Đã có tài khoản? <span id="btn-show-login">Quay lại Đăng nhập</span>
             </div>
         </div>
-
         <div id="message"></div>
     </div>
 
-    <script>
-        // 1. CẤU HÌNH SUPABASE (Đã thay tên biến để tránh lỗi trùng lặp)
-        const SUPABASE_URL = 'https://vhjxxgajenkzuykkqloi.supabase.co';
-        // Hãy chắc chắn đây là ANON KEY (Public Key)
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzQ5ODIyMiwiZXhwIjoyMDgzMDc0MjIyfQ.c6AfU8do1i4pgxiE-1SCrT6OU6Sgj4aSbhB-Rh981MM'; 
+    
+    <script src="../js/login.js"></script>
 
-        // Đổi tên biến thành supaClient để an toàn tuyệt đối
-        const supaClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-        // 2. LẤY CÁC THẺ HTML
-        const loginForm = document.getElementById('login-form');
-        const registerForm = document.getElementById('register-form');
-        const msgBox = document.getElementById('message');
-        
-        // 3. HÀM HIỂN THỊ THÔNG BÁO
-        function showMessage(text, type) {
-            msgBox.innerText = text;
-            msgBox.className = type;
-            msgBox.style.display = 'block';
-        }
-
-        // 4. XỬ LÝ CHUYỂN ĐỔI FORM (CLICK ĐĂNG KÝ)
-        const btnToRegister = document.getElementById('btn-show-register');
-        const btnToLogin = document.getElementById('btn-show-login');
-
-        btnToRegister.addEventListener('click', () => {
-            console.log("Đã click nút Đăng Ký Ngay"); // Kiểm tra ở Console
-            loginForm.classList.add('hidden');
-            registerForm.classList.remove('hidden');
-            msgBox.style.display = 'none';
-        });
-
-        btnToLogin.addEventListener('click', () => {
-            console.log("Đã click nút Quay lại");
-            loginForm.classList.remove('hidden');
-            registerForm.classList.add('hidden');
-            msgBox.style.display = 'none';
-        });
-
-        // 5. XỬ LÝ SUBMIT ĐĂNG KÝ
-        document.getElementById('form-register-submit').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            console.log("Bắt đầu đăng ký...");
-            
-            const name = document.getElementById('reg-name').value;
-            const email = document.getElementById('reg-email').value;
-            const password = document.getElementById('reg-pass').value;
-
-            showMessage("Đang xử lý...", "success");
-
-            // Gọi API Supabase
-            const { data: authData, error: authError } = await supaClient.auth.signUp({
-                email: email,
-                password: password
-            });
-
-            if (authError) {
-                console.error(authError);
-                showMessage("Lỗi: " + authError.message, 'error');
-                return;
-            }
-
-            // Lưu vào bảng tenants
-            if (authData.user) {
-                const { error: dbError } = await supaClient
-                    .from('tenants')
-                    .insert([{ 
-                        id: authData.user.id, 
-                        name: name, 
-                        email: email 
-                    }]);
-                
-                if (dbError) {
-                    console.error(dbError); // Xem lỗi chi tiết ở Console nếu có
-                    showMessage("Đăng ký User xong nhưng lỗi lưu tên: " + dbError.message, 'error');
-                } else {
-                    showMessage("Đăng ký thành công! Hãy kiểm tra email.", 'success');
-                    document.getElementById('form-register-submit').reset();
-                }
-            }
-        });
-
-        // 6. XỬ LÝ SUBMIT ĐĂNG NHẬP
-        document.getElementById('form-login-submit').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-pass').value;
-
-            showMessage("Đang đăng nhập...", "success");
-
-            const { data, error } = await supaClient.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
-
-            if (error) {
-                showMessage("Đăng nhập thất bại: " + error.message, 'error');
-            } else {
-                showMessage("Đăng nhập thành công!", 'success');
-                setTimeout(() => alert("Chào mừng quay trở lại!"), 500);
-            }
-        });
-    </script>
 </body>
 </html>

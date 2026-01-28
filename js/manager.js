@@ -1,9 +1,23 @@
+
 const content = document.getElementById("content");
 const pageTitle = document.getElementById("page-title");
 
 const supabaseUrl = 'https://vhjxxgajenkzuykkqloi.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzQ5ODIyMiwiZXhwIjoyMDgzMDc0MjIyfQ.c6AfU8do1i4pgxiE-1SCrT6OU6Sgj4aSbhB-Rh981MM';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0OTgyMjIsImV4cCI6MjA4MzA3NDIyMn0.l04T4IY-2mdFTvVhksDBmL5buErB1Pfa97GQOgRVtCg';
 const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+async function checkAuth() {
+  const { data: { session } } = await _supabase.auth.getSession();
+
+  if (!session) {
+    window.location.href = "../Login/login.html";
+    return;
+  }
+
+  console.log("Đã đăng nhập:", session.user.email);
+}
+
+
+
 let allFoods = [];
 
 let allTables = [];
@@ -22,10 +36,11 @@ let staffs = [
     { id: 2, name: "Trần Thị Bếp", role: "Đầu bếp", status: "Active", shift: "Chiều (14:00 - 22:00)", permissions: ["view_menu", "edit_menu"] }
 ];
 
-// tự động khởi chạy
-document.addEventListener("DOMContentLoaded", () => {
+
+document.addEventListener("DOMContentLoaded", async () => {
+    await checkAuth();
     setupNavigation();
-    renderMenu(); // mặc định vào trang Menu
+    renderMenu(); 
 });
 
 function setupNavigation() {
@@ -34,7 +49,7 @@ function setupNavigation() {
             document.querySelectorAll(".menu-item").forEach(i => i.classList.remove("active"));
             item.classList.add("active");
 
-            // Routing
+            
             const page = item.dataset.page;
             if (page === "menu") renderMenu();
             if (page === "table-reservation") renderTableReservation();
@@ -45,7 +60,7 @@ function setupNavigation() {
     });
 }
 
-// menu
+
 async function renderMenu() {
     pageTitle.innerText = "Quản lý Thực đơn";
     content.innerHTML = `<div class="loading">Đang tải dữ liệu từ Database...</div>`;
@@ -55,7 +70,7 @@ async function renderMenu() {
         if (error) throw error;
         allFoods = data;
 
-        // Vẽ thanh công cụ (Search & Filter)
+        
         content.innerHTML = `
             <div class="page-header">
                 <div class="left-tools">
