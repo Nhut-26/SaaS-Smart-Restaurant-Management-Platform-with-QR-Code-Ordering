@@ -345,6 +345,12 @@ def guest_page(
         tk = table_key(restaurant_id, branch_id, t)
         table_status[t] = table_ui_status(tk)
 
+    # =========================
+    # ✅ THÊM: lấy tên nhà hàng từ bảng restaurants
+    # =========================
+    restaurant_name = _get_restaurant_name_for_ui(restaurant_id)
+    # =========================
+
     return templates.TemplateResponse(
         "guest_menu.html",
         {
@@ -372,6 +378,11 @@ def guest_page(
             "bill_requested_at": st.get("bill_requested_at"),
             "bill_paid": bool(st.get("paid")),
             "bill_paid_at": st.get("paid_at"),
+            # =========================
+            # ✅ THÊM: đưa tên nhà hàng qua template để đổi chữ navbar
+            # =========================
+            "restaurant_name": restaurant_name,
+            # =========================
         },
     )
 
@@ -670,3 +681,231 @@ except Exception:
     pass
 get_menu = _get_menu_from_supabase
 
+
+# =============================================================================
+# ✅ THÊM MỚI: Kết nối bảng menu_images + restaurants (chỉ thêm, không đụng code cũ)
+# =============================================================================
+
+def _sb_select_params(table: str, *, params: Dict[str, str]) -> List[dict]:
+    """
+    Select linh hoạt cho Supabase REST: cho phép truyền thẳng params như:
+    - {"menu_id": "in.(...)"}
+    - {"tenant_id": "eq.<uuid>"}
+    """
+    if not _SUPABASE_URL or not _SUPABASE_KEY:
+        return []
+    import requests
+
+    headers = {
+        "apikey": _SUPABASE_KEY,
+        "Authorization": f"Bearer {_SUPABASE_KEY}",
+        "Accept": "application/json",
+    }
+    url = f"{_SUPABASE_URL.rstrip('/')}/rest/v1/{table}"
+    try:
+        res = requests.get(url, headers=headers, params=params, timeout=12)
+        res.raise_for_status()
+        data = res.json()
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _chunk_list(xs: List[str], n: int) -> List[List[str]]:
+    out: List[List[str]] = []
+    cur: List[str] = []
+    for x in xs:
+        cur.append(x)
+        if len(cur) >= n:
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    return out
+
+
+def _pick_best_image(rows: List[dict]) -> Optional[str]:
+    """
+    Ưu tiên:
+    1) is_primary = true
+    2) display_order nhỏ nhất
+    """
+    if not rows:
+        return None
+
+    def norm_bool(v) -> bool:
+        if isinstance(v, bool):
+            return v
+        s = str(v).strip().lower()
+        return s in ("true", "1", "t", "yes", "y")
+
+    def norm_int(v, default=10**9) -> int:
+        try:
+            return int(v)
+        except Exception:
+            try:
+                return int(float(v))
+            except Exception:
+                return default
+
+    # sort: primary DESC, display_order ASC
+    rows2 = sorted(
+        rows,
+        key=lambda r: (
+            0 if norm_bool(r.get("is_primary", False)) else 1,
+            norm_int(r.get("display_order", 10**9)),
+        ),
+    )
+    url = rows2[0].get("image_url")
+    return str(url) if url else None
+
+
+def _get_menu_images_map_for_menu_ids(
+    restaurant_id: str,
+    menu_ids: List[str],
+) -> Dict[str, str]:
+    """
+    Return: {menu_id: best_image_url}
+    """
+    if not menu_ids:
+        return {}
+
+    # Nếu restaurant_id là UUID -> thử filter tenant_id (vì menu_images có tenant_id)
+    tenant_filter = None
+    if _looks_like_uuid(restaurant_id):
+        tenant_filter = f"eq.{restaurant_id}"
+
+    mp: Dict[str, List[dict]] = {}
+
+    # tránh query in.(...) quá dài
+    for chunk in _chunk_list(menu_ids, 80):
+        in_clause = "in.(" + ",".join(chunk) + ")"
+        params = {
+            "select": "menu_id,image_url,is_primary,display_order,alt_text,tenant_id",
+            "menu_id": in_clause,
+            "order": "is_primary.desc,display_order.asc",
+            "limit": "2000",
+        }
+        if tenant_filter:
+            params["tenant_id"] = tenant_filter
+
+        rows = _sb_select_params("menu_images", params=params)
+        for r in rows:
+            mid = r.get("menu_id")
+            if not mid:
+                continue
+            mp.setdefault(str(mid), []).append(r)
+
+    out: Dict[str, str] = {}
+    for mid, rows in mp.items():
+        best = _pick_best_image(rows)
+        if best:
+            out[mid] = best
+    return out
+
+
+def _get_menu_from_supabase_with_images(restaurant_id: str) -> List[MenuItem]:
+    """
+    Lấy menus + gắn ảnh từ menu_images vào MenuItem.image_url.
+    Giữ logic cũ: nếu restaurant_id không phải UUID thì bỏ filter menus.
+    """
+    filters = {"restaurant_id": restaurant_id} if _looks_like_uuid(restaurant_id) else None
+
+    rows = _sb_select(
+        "menus",
+        select="id,restaurant_id,food_name,category,price,is_available,description",
+        eq_filters=filters,
+        order="category.asc,food_name.asc",
+        limit=500,
+    )
+
+    menu_ids: List[str] = []
+    out: List[MenuItem] = []
+
+    for r in rows:
+        mid = str(r.get("id", "") or "")
+        if mid:
+            menu_ids.append(mid)
+
+        raw_price = r.get("price", 0)
+        try:
+            price_int = int(float(raw_price))
+        except Exception:
+            price_int = 0
+
+        out.append(
+            MenuItem(
+                id=mid,
+                name=str(r.get("food_name", "")),
+                category=str(r.get("category") or "Khác"),
+                price=price_int,
+                description=r.get("description"),
+                available=bool(r.get("is_available", True)),
+                image_url=None,
+            )
+        )
+
+    img_map = _get_menu_images_map_for_menu_ids(restaurant_id, menu_ids)
+    for it in out:
+        it.image_url = img_map.get(it.id)
+
+    return out
+
+
+def _get_restaurant_name_for_ui(restaurant_id: str) -> Optional[str]:
+    """
+    Lấy restaurants.name theo restaurants.id = restaurant_id
+    """
+    if not restaurant_id or not _looks_like_uuid(restaurant_id):
+        return None
+
+    rows = _sb_select(
+        "restaurants",
+        select="id,name",
+        eq_filters={"id": restaurant_id},
+        limit=1,
+    )
+    if not rows:
+        return None
+    nm = rows[0].get("name")
+    return str(nm) if nm else None
+
+
+# ✅ Override get_menu = bản có ảnh (chỉ thêm dòng này, không xoá code cũ)
+try:
+    from functools import lru_cache as _lru_cache2
+    _get_menu_from_supabase_with_images = _lru_cache2(maxsize=128)(_get_menu_from_supabase_with_images)
+    _get_restaurant_name_for_ui = _lru_cache2(maxsize=256)(_get_restaurant_name_for_ui)
+except Exception:
+    pass
+
+get_menu = _get_menu_from_supabase_with_images
+
+# =============================================================================
+# ✅ (OPTIONAL) THÊM: endpoint tạo QR PNG (nếu bạn muốn in QR từ server)
+# QR chứa luôn restaurant_id trong URL vì URL path đã có restaurant_id
+# =============================================================================
+try:
+    from fastapi.responses import StreamingResponse
+    from io import BytesIO
+    from qr_service import make_qr_png_advanced  # type: ignore
+except Exception:
+    StreamingResponse = None  # type: ignore
+
+if StreamingResponse:
+    @app.get("/qr/{restaurant_id}/{branch_id}/tables/{table_id}.png")
+    def qr_png(restaurant_id: str, branch_id: str, table_id: str):
+        # Link đúng theo PUBLIC_BASE_URL nếu có
+        base = None
+        try:
+            import os
+            base = os.getenv("PUBLIC_BASE_URL")
+        except Exception:
+            base = None
+
+        if not base:
+            base = ""
+
+        url = (base.rstrip("/") if base else "").rstrip("/") + f"/g/{restaurant_id}/{branch_id}/tables/{table_id}"
+        png = make_qr_png_advanced(url)
+        return StreamingResponse(BytesIO(png), media_type="image/png")

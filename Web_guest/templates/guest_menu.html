@@ -21,7 +21,13 @@
   <nav class="navbar bg-white border-bottom">
     <div class="container d-flex justify-content-between align-items-center">
 
-      <span class="navbar-brand mb-0 h1">S2O • Scan2Order</span>
+    <span class="navbar-brand mb-0 h1">
+      {% if restaurant_name %}
+        {{ restaurant_name }}
+      {% else %}
+        S2O • Scan2Order
+      {% endif %}
+    </span>
 
       <div class="d-flex align-items-center gap-2">
         <!--QR share -->
