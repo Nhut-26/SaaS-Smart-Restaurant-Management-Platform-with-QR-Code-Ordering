@@ -16,12 +16,15 @@ let customers = [
     { id: 1, name: "Nguyễn Văn A", phone: "0909xxx", visits: 5, spend: 1200000 },
     { id: 2, name: "Trần Thị B", phone: "0912xxx", visits: 2, spend: 450000 }
 ];
+let customerChartInstance = null;
 
 let staffs = [];
 
 let schedules = []; 
 
 let currentRestaurantId = null;
+
+let currentStaffTab = 'list';
 
 const TIME_SLOTS = [
     { id: '08-12', label: '08:00 - 12:00' },
@@ -60,8 +63,8 @@ function setupNavigation() {
             if (page === "menu") renderMenu();
             if (page === "table-reservation") renderTableReservation();
             if (page === "finance") renderFinance();
-            if (page === "customer") renderCustomer();
-            if (page === "staff") renderStaffTable();
+            if (page === "customer") renderCustomerPage();
+            if (page === "staff") renderStaffPage();
         });
     });
 }
@@ -188,7 +191,7 @@ window.deleteFood = async function(id) {
     }
 };
 
-window.openMenuForm = function(item = null) {
+window.openAddMenuForm = function(item = null) {
     const title = item ? "Chỉnh sửa món ăn" : "Thêm món mới";
     const bodyHtml = `
         <div class="form-group">
@@ -1154,319 +1157,450 @@ function formatDateVN(dateString) {
 }
 
 // Khách hàng
-function renderCustomer() {
-    pageTitle.innerText = "Dữ liệu Khách hàng";
-    let html = `
-        <div class="page-header"><button class="btn-green">Xuất Excel</button></div>
-        <table>
-            <thead><tr><th>Tên</th><th>SĐT</th><th>Số lần ghé</th><th>Chi tiêu</th></tr></thead>
-            <tbody>
-                ${customers.map(c => `<tr><td>${c.name}</td><td>${c.phone}</td><td>${c.visits}</td><td>${c.spend.toLocaleString()}đ</td></tr>`).join('')}
-            </tbody>
-        </table>
-    `;
-    content.innerHTML = html;
-}
-// Nhân viên
-
-async function renderStaffTable() {
-    const content = document.getElementById("content");
-    content.innerHTML = `
-        <div class="page-header">
-            <h2 id="page-title">Quản lý Nhân sự & Lịch làm</h2>
-            <div class="header-actions">
-                <button class="btn-primary" onclick="window.openStaffModal()"><i class="fas fa-plus"></i> Thêm nhân viên</button>
-                <button class="btn-success" onclick="window.exportStaffExcel()"><i class="fas fa-file-excel"></i> Xuất Excel</button>
-            </div>
+window.renderCustomerPage = async function() {
+    // 1. Hiển thị thông báo đang tải để người dùng biết
+    pageTitle.innerText = "Quản lý Khách hàng";
+    document.getElementById("content").innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh;">
+            <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--manager-primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            <p style="margin-top: 20px; color: #666; font-weight: 500;">Đang đồng bộ dữ liệu...</p>
         </div>
-
-        <div class="dual-layout" style="display:flex; flex-direction:column; gap:30px;">
-            
-            <div class="card" style="padding:20px; border-radius:8px; background:white; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
-                    <h3>Danh sách Nhân viên</h3>
-                    <input type="text" id="staffSearch" placeholder="Tìm tên..." onkeyup="window.filterStaff()" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px;">
-                </div>
-                <div class="table-container">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Họ Tên</th>
-                                <th>Chức Vụ</th>
-                                <th>Loại Hợp Đồng</th>
-                                <th>SĐT</th>
-                                <th>Hành Động</th>
-                            </tr>
-                        </thead>
-                        <tbody id="staffTableBody">
-                            <tr><td colspan="6" style="text-align:center;">Đang tải...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="card" style="padding:20px; border-radius:8px; background:white; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <div style="margin-bottom:15px;">
-                    <h3>📅 Bảng Xếp Ca Làm Việc (Hôm nay)</h3>
-                    <p style="font-size:13px; color:#666;">
-                        <span style="color:#2ecc71; font-weight:bold;">●</span> Click vào ô để xếp lịch. 
-                        <strong>Full-time</strong> sẽ tự động chọn 8 tiếng.
-                    </p>
-                </div>
-                <div class="table-container">
-                    <table class="table table-bordered schedule-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 25%;">Nhân Viên</th>
-                                ${TIME_SLOTS.map(s => `<th>${s.label}</th>`).join('')}
-                                <th>Tổng giờ</th>
-                            </tr>
-                        </thead>
-                        <tbody id="scheduleTableBody">
-                            <tr><td colspan="6" style="text-align:center;">Đang tải lịch...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+        <style>@keyframes spin {0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);}}</style>
     `;
-    
-    // Gọi tải dữ liệu
-    await Promise.all([loadStaffs(), loadSchedules()]);
-    // Sau khi tải xong cả 2 mới vẽ bảng để tránh lỗi đồng bộ
-    renderStaff(staffs);
+
+    try {
+        // Tải dữ liệu song song nếu chưa có
+        const promises = [];
+        if (!allTables || allTables.length === 0) {
+            promises.push(_supabase.from('tables').select('*').then(({ data }) => allTables = data || []));
+        }
+        if (!allReservations || allReservations.length === 0) {
+            promises.push(_supabase.from('bookings').select('*').then(({ data }) => allReservations = data || []));
+        }
+        if (promises.length > 0) await Promise.all(promises);
+
+        const today = new Date().toISOString().split('T')[0];
+
+        // HTML Structure Mới - Chuyên nghiệp hơn
+        const html = `
+            <div class="control-panel">
+                <div class="control-group">
+                    <i class="far fa-calendar-alt" style="color: var(--manager-primary); font-size: 20px;"></i>
+                    <label>Xem báo cáo ngày:</label>
+                    <input type="date" id="customerDateFilter" class="custom-date-input" value="${today}" onchange="updateCustomerStats()">
+                </div>
+                <button class="btn-green" onclick="exportDailyCustomerExcel()" style="display: flex; align-items: center; gap: 8px; padding: 10px 20px;">
+                    <i class="fas fa-file-excel"></i> Xuất Excel
+                </button>
+            </div>
+
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-icon bg-light-red"><i class="fas fa-users"></i></div>
+                    <div class="kpi-info">
+                        <h4>Tổng Khách Dự Kiến</h4>
+                        <div class="kpi-value" id="kpiTotalGuests">0</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon bg-light-blue"><i class="fas fa-clipboard-check"></i></div>
+                    <div class="kpi-info">
+                        <h4>Số Bàn Đã Đặt</h4>
+                        <div class="kpi-value" id="kpiTotalBookings">0</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon bg-light-green"><i class="fas fa-clock"></i></div>
+                    <div class="kpi-info">
+                        <h4>Giờ Đông Nhất</h4>
+                        <div class="kpi-value" id="kpiPeakHour">--:--</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="analytics-container">
+                <div class="card-box">
+                    <div class="card-header">
+                        <h3 class="card-title">Biểu Đồ Lưu Lượng Khách</h3>
+                    </div>
+                    <div class="chart-wrapper" style="flex:1; position: relative; min-height: 300px;">
+                        <canvas id="customerChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card-box" style="padding: 0; overflow: hidden;">
+                    <div class="card-header" style="padding: 20px; margin: 0;">
+                        <h3 class="card-title">Chi Tiết Đặt Bàn</h3>
+                    </div>
+                    <div style="overflow-y: auto; height: 350px; padding: 0;">
+                        <table class="mini-table">
+                            <thead style="position: sticky; top: 0; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                                <tr>
+                                    <th>Giờ</th>
+                                    <th>Tên Khách</th>
+                                    <th>Bàn</th>
+                                    <th style="text-align: right;">SL</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bookingTableBody">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById("content").innerHTML = html;
+        updateCustomerStats(); // Tính toán lần đầu
+
+    } catch (error) {
+        console.error("Lỗi:", error);
+        document.getElementById("content").innerHTML = `<div style="color:red; text-align:center; padding:20px;">Lỗi tải dữ liệu: ${error.message}</div>`;
+    }
 };
 
-// --- 3. XỬ LÝ DỮ LIỆU (DATA) ---
+// Hàm xử lý logic chính khi chọn ngày
+window.updateCustomerStats = function() {
+    const selectedDate = document.getElementById("customerDateFilter").value;
+    
+    // Lọc dữ liệu
+    const dailyBookings = allReservations.filter(res => 
+        res.booking_time && res.booking_time.startsWith(selectedDate)
+    ).sort((a, b) => new Date(a.booking_time) - new Date(b.booking_time));
 
-// Tải nhân viên
-async function loadStaffs() {
-    let { data, error } = await _supabase.from('staffs').select('*').order('id', { ascending: true });
-    if (error) console.error("Lỗi tải NV:", error);
-    else staffs = data || [];
-}
+    // --- Xử lý KPI ---
+    let totalGuests = 0;
+    const hourCounts = {}; // Dùng để tìm giờ cao điểm
+    let bookingTableHtml = "";
 
-// Tải lịch làm việc (Bảng scheduling)
-async function loadSchedules() {
-    let { data, error } = await _supabase.from('scheduling').select('*');
-    if (error) console.error("Lỗi tải lịch:", error);
-    else schedules = data || [];
-}
+    dailyBookings.forEach(booking => {
+        // Tính tổng khách
+        const guests = parseInt(booking.people_count) || 0;
+        totalGuests += guests;
 
-// Vẽ bảng nhân viên
-function renderStaff(data) {
-    const tbody = document.getElementById("staffTableBody");
-    if (!tbody) return;
-    tbody.innerHTML = "";
+        // Đếm giờ cao điểm
+        const hour = new Date(booking.booking_time).getHours();
+        hourCounts[hour] = (hourCounts[hour] || 0) + guests;
 
-    if (!data || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Chưa có dữ liệu</td></tr>`;
-    } else {
-        data.forEach(s => {
-            const roleColor = s.role === 'Quản lý' ? '#e74c3c' : (s.role === 'Thu ngân' ? '#2ecc71' : '#3498db');
-            const typeBadge = s.shift === 'Full-time' ? 
-                '<span class="badge-ft" style="background:#2c3e50; color:white; padding:2px 6px; border-radius:4px; font-size:11px;">Full-time</span>' : 
-                '<span class="badge-pt" style="background:#f39c12; color:white; padding:2px 6px; border-radius:4px; font-size:11px;">Part-time</span>';
-            
-            // FIX: Thêm dấu nháy đơn '${s.id}' để tránh lỗi cú pháp nếu ID là chuỗi
-            tbody.innerHTML += `
-                <tr>
-                    <td>#${s.id}</td>
-                    <td><strong>${s.name}</strong></td>
-                    <td><span style="background:${roleColor}; color:white; padding:4px 8px; border-radius:4px; font-size:12px;">${s.role}</span></td>
-                    <td>${typeBadge}</td>
-                    <td>${s.phone || '-'}</td>
-                    <td>
-                        <button class="btn-icon edit" onclick="window.editStaff('${s.id}')"><i class="fas fa-edit"></i></button>
-                        <button class="btn-icon delete" onclick="window.deleteStaff('${s.id}')"><i class="fas fa-trash"></i></button>
-                    </td>
-                </tr>
-            `;
-        });
-    }
-    renderScheduleTable();
-}
+        // Tìm tên bàn
+        const table = allTables.find(t => t.id == booking.table_id);
+        const tableName = table ? table.name : "N/A";
+        const timeStr = new Date(booking.booking_time).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'});
 
-// Vẽ bảng lịch
-function renderScheduleTable() {
-    const tbody = document.getElementById("scheduleTableBody");
-    if (!tbody) return;
-    tbody.innerHTML = "";
-
-    staffs.forEach(staff => {
-        // Lọc lịch của nhân viên này
-        // FIX: Dùng == thay vì === để so sánh số và chuỗi an toàn
-        const staffSchedules = schedules.filter(sch => sch.staff_id == staff.id);
-        const totalHours = staffSchedules.length * 4;
-
-        let rowHtml = `
+        // HTML cho bảng nhỏ bên phải
+        bookingTableHtml += `
             <tr>
+                <td style="color: var(--manager-primary); font-weight:bold;">${timeStr}</td>
                 <td>
-                    <div style="font-weight:bold; font-size:15px;">${staff.name}</div>
-                    <div style="font-size:12px; margin-top:4px; color:#666;">
-                        ${staff.shift} - ${staff.role}
-                    </div>
+                    <div style="font-weight: 500; color: #333;">${booking.customer_name || 'Khách lẻ'}</div>
+                    <div style="font-size: 11px; color: #888;">${booking.customer_phone || ''}</div>
                 </td>
-        `;
-
-        TIME_SLOTS.forEach(slot => {
-            const isChecked = staffSchedules.some(sch => sch.slot === slot.id);
-            
-            const bgStyle = isChecked ? 'background-color:#e8f5e9; border:1px solid #2ecc71;' : '';
-            const icon = isChecked ? '<i class="fas fa-check-circle" style="color:#2ecc71; font-size:24px;"></i>' : '<i class="far fa-circle" style="color:#ddd; font-size:24px;"></i>';
-            
-            // FIX QUAN TRỌNG: Thêm dấu nháy đơn '${staff.id}'
-            rowHtml += `
-                <td style="text-align:center; cursor:pointer; vertical-align:middle; transition:0.2s; ${bgStyle}" 
-                    onclick="window.toggleSchedule('${staff.id}', '${slot.id}')"
-                    onmouseover="this.style.backgroundColor='#f9f9f9'"
-                    onmouseout="this.style.backgroundColor='${isChecked ? '#e8f5e9' : 'transparent'}'">
-                    ${icon}
-                </td>
-            `;
-        });
-
-        rowHtml += `
-                <td style="text-align:center; font-weight:bold; vertical-align:middle; color:${totalHours >= 8 ? '#27ae60' : '#7f8c8d'}">
-                    ${totalHours}h
-                </td>
+                <td><span class="table-badge">${tableName}</span></td>
+                <td style="text-align: right; font-weight: bold;">${guests}</td>
             </tr>
         `;
-        tbody.innerHTML += rowHtml;
     });
-}
 
-// --- 4. LOGIC CLICK VÀ LƯU VÀO DB ---
-window.toggleSchedule = async function(staffId, clickedSlotId) {
-    console.log("Đã click:", staffId, clickedSlotId); // Debug xem nhận sự kiện chưa
+    if (dailyBookings.length === 0) {
+        bookingTableHtml = `<tr><td colspan="4" style="text-align:center; padding:30px; color:#999;">Không có khách vào ngày này</td></tr>`;
+    }
 
-    // FIX: Dùng == để tìm staff (đề phòng staffId truyền vào là chuỗi còn trong data là số)
-    const staff = staffs.find(s => s.id == staffId);
-    if (!staff) {
-        console.error("Không tìm thấy nhân viên với ID:", staffId);
+    // Cập nhật DOM
+    document.getElementById("bookingTableBody").innerHTML = bookingTableHtml;
+    document.getElementById("kpiTotalGuests").innerText = totalGuests;
+    document.getElementById("kpiTotalBookings").innerText = dailyBookings.length;
+
+    // Tìm giờ cao điểm
+    let peakHour = "--:--";
+    let maxCount = 0;
+    for (const [h, count] of Object.entries(hourCounts)) {
+        if (count > maxCount) {
+            maxCount = count;
+            peakHour = `${h}:00`;
+        }
+    }
+    document.getElementById("kpiPeakHour").innerText = peakHour;
+
+    // --- Vẽ biểu đồ ---
+    renderCustomerChart(dailyBookings);
+};
+
+// Hàm vẽ biểu đồ
+window.renderCustomerChart = function(bookings) {
+    const ctx = document.getElementById('customerChart').getContext('2d');
+
+    // Tạo mảng dữ liệu 14 tiếng (8h - 22h)
+    const labels = [];
+    const dataValues = [];
+    for (let i = 8; i <= 22; i++) {
+        labels.push(`${i}h`);
+        let count = 0;
+        bookings.forEach(b => {
+            if (new Date(b.booking_time).getHours() === i) {
+                count += (parseInt(b.people_count) || 0);
+            }
+        });
+        dataValues.push(count);
+    }
+
+    if (customerChartInstance) customerChartInstance.destroy();
+
+    // Gradient màu cho đẹp
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(235, 63, 98, 0.5)');
+    gradient.addColorStop(1, 'rgba(235, 63, 98, 0.0)');
+
+    customerChartInstance = new Chart(ctx, {
+        type: 'line', // Đổi sang Line chart nhìn mượt mà hơn cho xu hướng
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Lượng khách',
+                data: dataValues,
+                borderColor: '#eb3f62',
+                backgroundColor: gradient,
+                borderWidth: 2,
+                pointBackgroundColor: '#fff',
+                pointBorderColor: '#eb3f62',
+                pointRadius: 4,
+                fill: true,
+                tension: 0.4 // Làm mềm đường cong
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0,0,0,0.8)',
+                    padding: 10,
+                    cornerRadius: 8,
+                    displayColors: false,
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { borderDash: [5, 5], color: '#f0f0f0' },
+                    ticks: { precision: 0 }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+};
+
+// Hàm Xuất Excel (Bao gồm dữ liệu biểu đồ)
+window.exportDailyCustomerExcel = function() {
+    const selectedDate = document.getElementById("customerDateFilter").value;
+    
+    // Lấy lại dữ liệu đã lọc (làm lại logic lọc giống updateCustomerStats)
+    const dailyBookings = allReservations.filter(res => res.booking_time && res.booking_time.startsWith(selectedDate));
+
+    if (dailyBookings.length === 0) return alert("Không có dữ liệu để xuất!");
+
+    // --- Sheet 1: Chi tiết khách hàng ---
+    const detailData = dailyBookings.map(b => {
+        const table = allTables.find(t => t.id == b.table_id);
+        return {
+            "Ngày": selectedDate,
+            "Giờ đến": new Date(b.booking_time).toLocaleTimeString('vi-VN'),
+            "Tên Khách Hàng": b.customer_name,
+            "Số Điện Thoại": b.phone,
+            "Số Lượng Khách": b.people_count,
+            "Bàn": table ? table.name : "N/A",
+            "Ngày Tạo Đơn": new Date(b.created_at).toLocaleString('vi-VN')
+        };
+    });
+
+    // --- Sheet 2: Dữ liệu Biểu đồ (Thống kê theo giờ) ---
+    // Excel không hỗ trợ xuất trực tiếp hình ảnh Chart từ JS client-side đơn giản,
+    // nên ta xuất Dữ liệu Thống kê để người dùng có thể tự vẽ chart trong Excel dễ dàng.
+    const hoursCount = {};
+    dailyBookings.forEach(b => {
+        const h = new Date(b.booking_time).getHours();
+        const key = `${h}:00 - ${h+1}:00`;
+        if (!hoursCount[key]) hoursCount[key] = 0;
+        hoursCount[key] += (parseInt(b.people_count) || 0);
+    });
+
+    const chartData = Object.keys(hoursCount).map(key => ({
+        "Khung Giờ": key,
+        "Tổng Số Khách": hoursCount[key]
+    }));
+
+    // Tạo Workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Tạo Sheet Chi tiết
+    const wsDetail = XLSX.utils.json_to_sheet(detailData);
+    XLSX.utils.book_append_sheet(wb, wsDetail, "ChiTietKhachHang");
+
+    // Tạo Sheet Biểu đồ
+    const wsChart = XLSX.utils.json_to_sheet(chartData);
+    XLSX.utils.book_append_sheet(wb, wsChart, "SoLieuBieuDo");
+
+    // Xuất file
+    XLSX.writeFile(wb, `BaoCao_KhachHang_${selectedDate}.xlsx`);
+};
+// Nhân viên
+
+window.renderStaffPage = async function() {
+    pageTitle.innerText = "Quản lý Nhân sự và Lịch làm việc";
+    document.getElementById("content").innerHTML = `
+        <div style="text-align: center; padding: 50px;">
+            <i class="fas fa-spinner fa-spin" style="font-size: 40px; color: var(--manager-primary);"></i>
+            <p style="margin-top: 10px;">Đang tải dữ liệu nhân sự...</p>
+        </div>
+    `;
+
+    try {
+        // 2. Tải dữ liệu song song (Staffs + Schedules)
+        const promises = [];
+        
+        // Luôn tải lại để đảm bảo dữ liệu mới nhất
+        promises.push(_supabase.from('staffs').select('*').order('id', { ascending: true }).then(({ data }) => staffs = data || []));
+        promises.push(_supabase.from('scheduling').select('*').then(({ data }) => scheduling = data || []));
+        
+        await Promise.all(promises);
+
+        // 3. Render Khung Trang (Tabs)
+        const html = `
+            <div class="page-header">
+                <div class="staff-tabs">
+                    <button class="tab-btn ${currentStaffTab === 'list' ? 'active' : ''}" onclick="switchStaffTab('list')">
+                        <i class="fas fa-users"></i> Danh Sách
+                    </button>
+                    <button class="tab-btn ${currentStaffTab === 'schedule' ? 'active' : ''}" onclick="switchStaffTab('schedule')">
+                        <i class="fas fa-calendar-alt"></i> Xếp Lịch Làm Việc
+                    </button>
+                </div>
+            </div>
+            
+            <div id="staffTabContent">
+                </div>
+        `;
+
+        document.getElementById("content").innerHTML = html;
+        
+        // 4. Render nội dung theo Tab đang chọn
+        if (currentStaffTab === 'list') renderStaffListView();
+        else renderScheduleView();
+
+    } catch (error) {
+        console.error("Lỗi tải staff:", error);
+        document.getElementById("content").innerHTML = `<p style="color:red; text-align:center;">Lỗi: ${error.message}</p>`;
+    }
+};
+
+// Hàm chuyển đổi Tab (Fix lỗi click không ăn)
+window.switchStaffTab = function(tabName) {
+    currentStaffTab = tabName;
+    
+    // Update UI active class
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    // Tìm button vừa click để add class active (dùng event.currentTarget an toàn hơn)
+    event.currentTarget.classList.add('active'); 
+
+    if (tabName === 'list') renderStaffListView();
+    else renderScheduleView();
+};
+
+// ---------------------------------------------------------
+// TAB 1: DANH SÁCH NHÂN VIÊN (List View)
+// ---------------------------------------------------------
+window.renderStaffListView = function() {
+    // Tính KPI
+    const totalStaff = staffs.length;
+    const totalChefs = staffs.filter(s => (s.role || '').toLowerCase().includes('bếp')).length;
+    const totalWaiters = staffs.filter(s => (s.role || '').toLowerCase().includes('phục vụ')).length;
+
+    const html = `
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-icon bg-light-red"><i class="fas fa-user-tie"></i></div>
+                <div class="kpi-info"><h4>Tổng Nhân Sự</h4><div class="kpi-value">${totalStaff}</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon bg-light-blue"><i class="fas fa-utensils"></i></div>
+                <div class="kpi-info"><h4>Bếp</h4><div class="kpi-value">${totalChefs}</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon bg-light-green"><i class="fas fa-concierge-bell"></i></div>
+                <div class="kpi-info"><h4>Phục Vụ</h4><div class="kpi-value">${totalWaiters}</div></div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+             <div class="control-group">
+                <input type="text" id="staffSearch" placeholder="Tìm tên nhân viên..." onkeyup="filterStaff()" class="form-control" style="width: 250px;">
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-green" onclick="openAddStaffModal()"><i class="fas fa-plus"></i> Thêm Mới</button>
+                <button class="btn-green" onclick="exportStaffExcel()" style="background:#27ae60;"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            </div>
+        </div>
+
+        <div class="table-box" style="padding: 0; overflow: hidden;">
+            <table class="table" style="margin-top:0;">
+                <thead>
+                    <tr>
+                        <th style="padding-left:30px;">Nhân Viên</th>
+                        <th>Chức Vụ</th>
+                        <th>SĐT</th>
+                        <th>Ca Mặc Định</th>
+                        <th style="text-align: right; padding-right:30px;">Hành Động</th>
+                    </tr>
+                </thead>
+                <tbody id="staffTableBody"></tbody>
+            </table>
+        </div>
+    `;
+    document.getElementById("staffTabContent").innerHTML = html;
+    renderStaffTable(staffs); // Gọi hàm vẽ bảng
+};
+
+// Hàm vẽ bảng dữ liệu (Tách ra để dùng cho Search)
+window.renderStaffTable = function(dataList) {
+    const tbody = document.getElementById("staffTableBody");
+    if (!tbody) return;
+    
+    if (dataList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;">Không tìm thấy dữ liệu.</td></tr>`;
         return;
     }
 
-    // Xác định các Slot cần xử lý (Logic 8 tiếng cho Full-time)
-    let slotsToProcess = [clickedSlotId]; 
+    tbody.innerHTML = dataList.map(s => {
+        let roleBadge = 'role-other';
+        const r = (s.role || '').toLowerCase();
+        if(r.includes('bếp')) roleBadge = 'role-chef';
+        else if(r.includes('phục vụ')) roleBadge = 'role-waiter';
+        else if(r.includes('quản lý')) roleBadge = 'role-manager';
 
-    if (staff.shift === 'Full-time') {
-        if (clickedSlotId === '08-12') slotsToProcess = ['08-12', '12-16'];
-        else if (clickedSlotId === '12-16') slotsToProcess = ['12-16', '16-20'];
-        else if (clickedSlotId === '16-20') slotsToProcess = ['16-20', '20-24'];
-        else if (clickedSlotId === '20-24') {
-            alert("⚠️ Full-time không thể bắt đầu lúc 20:00 (chỉ còn 4 tiếng).");
-            return;
-        }
-    }
-
-    try {
-        // Kiểm tra xem slot đã tồn tại chưa
-        const existingItems = schedules.filter(sch => 
-            sch.staff_id == staffId && slotsToProcess.includes(sch.slot)
-        );
-        
-        // Nếu đã có -> XÓA (Uncheck)
-        if (existingItems.length > 0) {
-            const idsToDelete = existingItems.map(x => x.id);
-            
-            // Xóa DB
-            const { error } = await _supabase.from('scheduling').delete().in('id', idsToDelete);
-            if (error) throw error;
-
-            // Xóa local
-            schedules = schedules.filter(x => !idsToDelete.includes(x.id));
-        } 
-        // Nếu chưa có -> THÊM (Check)
-        else {
-            const newRows = slotsToProcess.map(slot => ({
-                restaurant_id: currentRestaurantId,
-                staff_id: staffId,
-                staff_name: staff.name,
-                slot: slot
-            }));
-
-            // Thêm DB
-            const { data, error } = await _supabase.from('scheduling').insert(newRows).select();
-            if (error) throw error;
-
-            // Thêm local
-            if (data) schedules.push(...data);
-        }
-
-        renderScheduleTable();
-
-    } catch (err) {
-        console.error("Lỗi cập nhật lịch:", err);
-        alert("Lỗi server: " + err.message);
-    }
-};
-
-// --- 5. CÁC FORM MODAL ---
-window.openStaffModal = function(staffId = null) {
-    // FIX: Tìm nhân viên bằng ID thay vì truyền object trực tiếp để tránh lỗi chuỗi
-    let staff = null;
-    if(staffId) staff = staffs.find(s => s.id == staffId);
-
-    const isEdit = staff !== null;
-    const formHtml = `
-        <div class="form-group"><label>Họ Tên:</label><input type="text" id="sName" class="form-control" value="${staff ? staff.name : ''}"></div>
-        <div class="dual-layout" style="gap:15px">
-            <div class="form-group" style="flex:1"><label>Chức Vụ:</label>
-                <select id="sRole" class="form-control">
-                    <option value="Quản lý" ${staff?.role === 'Quản lý'?'selected':''}>Quản lý</option>
-                    <option value="Thu ngân" ${staff?.role === 'Thu ngân'?'selected':''}>Thu ngân</option>
-                    <option value="Phục vụ" ${staff?.role === 'Phục vụ'?'selected':''}>Phục vụ</option>
-                    <option value="Đầu bếp" ${staff?.role === 'Đầu bếp'?'selected':''}>Đầu bếp</option>
-                    <option value="Vệ sinh" ${staff?.role === 'Vệ sinh'?'selected':''}>Vệ sinh</option>
-                </select>
-            </div>
-            <div class="form-group" style="flex:1"><label>Loại Hợp Đồng:</label>
-                <select id="sShift" class="form-control">
-                    <option value="Full-time" ${staff?.shift === 'Full-time'?'selected':''}>Full-time (8h)</option>
-                    <option value="Part-time" ${staff?.shift === 'Part-time'?'selected':''}>Part-time (4h)</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-group"><label>SĐT:</label><input type="text" id="sPhone" class="form-control" value="${staff ? staff.phone : ''}"></div>
-    `;
-
-    showUniversalModal(isEdit ? "Sửa Nhân Viên" : "Thêm Nhân Viên", formHtml, async () => {
-        const payload = {
-            name: document.getElementById("sName").value,
-            role: document.getElementById("sRole").value,
-            shift: document.getElementById("sShift").value,
-            phone: document.getElementById("sPhone").value
-        };
-        
-        if(!payload.name) return alert("Vui lòng nhập tên!");
-
-        try {
-            if (isEdit) {
-                await _supabase.from('staffs').update(payload).eq('id', staff.id);
-            } else {
-                await _supabase.from('staffs').insert([payload]);
-            }
-            closeUniversalModal();
-            // Reload lại dữ liệu để đồng bộ
-            await loadStaffs(); 
-            renderStaffTable(staffs);
-        } catch (e) {
-            alert("Lỗi lưu: " + e.message);
-        }
-    });
-};
-
-window.editStaff = (id) => window.openStaffModal(id);
-
-window.deleteStaff = async (id) => {
-    if(confirm("Bạn có chắc muốn xóa?")) {
-        await _supabase.from('staffs').delete().eq('id', id);
-        await _supabase.from('scheduling').delete().eq('staff_id', id);
-        await loadStaffs();
-        renderStaffTable(staffs);
-    }
+        return `
+            <tr>
+                <td style="padding-left:30px;">
+                    <div class="staff-info">
+                        <div class="staff-avatar" style="background:${stringToColor(s.name)};">${s.name.charAt(0).toUpperCase()}</div>
+                        <div>
+                            <span class="staff-name">${s.name}</span>
+                            <span class="staff-sub">ID: #${s.id}</span>
+                        </div>
+                    </div>
+                </td>
+                <td><span class="role-badge ${roleBadge}">${s.role}</span></td>
+                <td>${s.phone || '-'}</td>
+                <td><span style="background:#f4f6f8; padding:4px 8px; border-radius:4px;">${s.shift || 'Full-time'}</span></td>
+                <td style="text-align:right; padding-right:30px;">
+                     <button class="action-btn btn-edit" onclick="editStaff('${s.id}')" title="Sửa"><i class="fas fa-edit"></i></button>
+                     <button class="action-btn btn-delete" onclick="deleteStaff('${s.id}')" title="Xóa"><i class="fas fa-trash-alt"></i></button>
+                </td>
+            </tr>
+        `;
+    }).join('');
 };
 
 window.filterStaff = function() {
@@ -1475,33 +1609,294 @@ window.filterStaff = function() {
     renderStaffTable(filtered);
 };
 
-window.exportStaffExcel = function() {
-    if (staffs.length === 0) return alert("Chưa có dữ liệu!");
-    const dataExport = staffs.map(s => ({
-        "ID": s.id, "Họ Tên": s.name, "Chức Vụ": s.role, "Loại HĐ": s.shift, "SĐT": s.phone
-    }));
-    const ws = XLSX.utils.json_to_sheet(dataExport);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "NhanVien");
-    XLSX.writeFile(wb, "DanhSachNhanVien.xlsx");
+// Helper: Tạo màu ngẫu nhiên cố định theo tên
+function stringToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return '#' + "00000".substring(0, 6 - c.length) + c;
+}
+
+// ---------------------------------------------------------
+// TAB 2: XẾP LỊCH (Schedule View)
+// ---------------------------------------------------------
+window.renderScheduleView = function() {
+    const days = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"];
+    const shifts = [
+        { id: "Sang", label: "Sáng (6h-14h)" }, 
+        { id: "Chieu", label: "Chiều (14h-22h)" }
+    ];
+
+    let tableHtml = `
+        <div class="schedule-container">
+            <h3 style="margin-bottom: 15px; color: #333;">Lịch Làm Việc Tuần Này</h3>
+            <table class="schedule-table">
+                <thead>
+                    <tr>
+                        <th style="width: 100px;">Ca / Thứ</th>
+                        ${days.map(d => `<th>${d}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    shifts.forEach(shiftObj => {
+        tableHtml += `<tr>
+            <td style="font-weight:bold; text-align:center; background:#fcfcfc;">${shiftObj.label}</td>`;
+            
+        days.forEach(day => {
+            // Lọc nhân viên trong ô này
+            // Logic: day_of_week trong DB là "Thứ 2", shift_type là "Sang" hoặc "Chieu"
+            const staffInSlot = schedules.filter(s => s.day_of_week === day && s.shift_type === shiftObj.id);
+
+            let content = "";
+            staffInSlot.forEach(s => {
+                // Lấy role để tô màu
+                const staffInfo = staffs.find(st => st.id == s.staff_id);
+                const roleClass = (staffInfo && (staffInfo.role||'').toLowerCase().includes('bếp')) ? 'role-bep' : 'role-pv';
+
+                content += `
+                    <div class="shift-tag ${roleClass}">
+                        <span>${s.staff_name}</span>
+                        <i class="fas fa-times remove-shift" onclick="deleteSchedule('${s.id}')" title="Xóa lịch"></i>
+                    </div>
+                `;
+            });
+
+            tableHtml += `
+                <td>
+                    <div style="min-height: 80px;">${content}</div>
+                    <button class="add-shift-btn" onclick="openAddScheduleModal('${day}', '${shiftObj.id}')">
+                        + Thêm
+                    </button>
+                </td>
+            `;
+        });
+        tableHtml += `</tr>`;
+    });
+
+    tableHtml += `</tbody></table></div>`;
+    document.getElementById("staffTabContent").innerHTML = tableHtml;
 };
 
-// --- HELPER FUNCTIONS ---
+// ---------------------------------------------------------
+// CÁC HÀM CRUD (Thêm, Sửa, Xóa)
+// ---------------------------------------------------------
+
+// 1. Thêm Nhân Viên
+window.openAddStaffModal = function() {
+    const html = `
+        <div class="form-group">
+            <label>Họ và Tên <span style="color:red">*</span></label>
+            <input type="text" id="newStaffName" class="form-control" placeholder="Nhập họ tên...">
+        </div>
+        <div class="form-group">
+            <label>Chức Vụ</label>
+            <select id="newStaffRole" class="form-control">
+                <option value="Phục vụ">Phục vụ</option>
+                <option value="Bếp">Bếp</option>
+                <option value="Quản lý">Quản lý</option>
+                <option value="Thu ngân">Thu ngân</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Ca Mặc Định</label>
+            <select id="newStaffShift" class="form-control">
+                <option value="Full-time">Full-time</option>
+                <option value="Sáng">Ca Sáng</option>
+                <option value="Chiều">Ca Chiều</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Số Điện Thoại</label>
+            <input type="text" id="newStaffPhone" class="form-control" placeholder="Ví dụ: 0909xxxxxx">
+        </div>
+    `;
+
+    showUniversalModal("Thêm Nhân Viên Mới", html, async () => {
+        // Lấy dữ liệu từ form
+        const name = document.getElementById("newStaffName").value.trim();
+        const role = document.getElementById("newStaffRole").value;
+        const shift = document.getElementById("newStaffShift").value;
+        const phone = document.getElementById("newStaffPhone").value.trim();
+
+        // Kiểm tra dữ liệu đầu vào
+        if (!name) {
+            alert("Vui lòng nhập tên nhân viên!");
+            return; // Dừng lại không lưu
+        }
+
+        // Gửi lên Supabase
+        const { data, error } = await _supabase
+            .from('staffs')
+            .insert([{ name: name, role: role, shift: shift, phone: phone }])
+            .select();
+
+        if (error) {
+            alert("Lỗi khi thêm: " + error.message);
+        } else {
+            // Thành công: Cập nhật giao diện ngay lập tức
+            if (data && data.length > 0) {
+                staffs.push(data[0]); // Thêm vào mảng local
+                renderStaffListView(); // Vẽ lại bảng
+                closeUniversalModal(); // Đóng modal
+            }
+        }
+    });
+};
+
+// 2. Sửa Nhân Viên (Đã fix lỗi mất chức năng)
+window.editStaff = function(id) {
+    const s = staffs.find(x => x.id == id);
+    if (!s) return;
+
+    const html = `
+        <div class="form-group"><label>Họ Tên</label><input id="editStaffName" class="form-control" value="${s.name}"></div>
+        <div class="form-group"><label>Chức Vụ</label>
+            <select id="editStaffRole" class="form-control">
+                <option value="Phục vụ" ${s.role === 'Phục vụ' ? 'selected' : ''}>Phục vụ</option>
+                <option value="Bếp" ${s.role === 'Bếp' ? 'selected' : ''}>Bếp</option>
+                <option value="Quản lý" ${s.role === 'Quản lý' ? 'selected' : ''}>Quản lý</option>
+                <option value="Thu ngân" ${s.role === 'Thu ngân' ? 'selected' : ''}>Thu ngân</option>
+            </select>
+        </div>
+        <div class="form-group"><label>Ca Mặc Định</label>
+            <select id="editStaffShift" class="form-control">
+                <option value="Sáng" ${s.shift === 'Sáng' ? 'selected' : ''}>Sáng</option>
+                <option value="Chiều" ${s.shift === 'Chiều' ? 'selected' : ''}>Chiều</option>
+                <option value="Full-time" ${s.shift === 'Full-time' ? 'selected' : ''}>Full-time</option>
+            </select>
+        </div>
+        <div class="form-group"><label>SĐT</label><input id="editStaffPhone" class="form-control" value="${s.phone || ''}"></div>
+    `;
+
+    showUniversalModal("Cập Nhật Thông Tin", html, async () => {
+        const name = document.getElementById("editStaffName").value;
+        const role = document.getElementById("editStaffRole").value;
+        const shift = document.getElementById("editStaffShift").value;
+        const phone = document.getElementById("editStaffPhone").value;
+
+        const { error } = await _supabase.from('staffs').update({ name, role, shift, phone }).eq('id', id);
+        if (error) alert("Lỗi update: " + error.message);
+        else {
+            // Update local array
+            const idx = staffs.findIndex(x => x.id == id);
+            if(idx !== -1) {
+                staffs[idx] = { ...staffs[idx], name, role, shift, phone };
+            }
+            renderStaffListView();
+            closeUniversalModal();
+        }
+    });
+};
+
+// 3. Xóa Nhân Viên
+window.deleteStaff = async function(id) {
+    if(!confirm("Bạn có chắc muốn xóa nhân viên này?")) return;
+    
+    // Xóa cả lịch làm việc của nhân viên đó trước (để sạch data)
+    await _supabase.from('scheduling').delete().eq('staff_id', id);
+
+    const { error } = await _supabase.from('staffs').delete().eq('id', id);
+    if(error) alert("Lỗi xóa: " + error.message);
+    else {
+        staffs = staffs.filter(s => s.id !== id);
+        renderStaffListView();
+    }
+};
+
+// 4. Thêm Lịch (Schedule)
+window.openAddScheduleModal = function(day, shiftId) {
+    const options = staffs.map(s => `<option value="${s.id}" data-name="${s.name}">${s.name} (${s.role})</option>`).join('');
+
+    const shiftLabel = (shiftId === 'Sang') ? 'Sáng (6h-14h)' : 'Chiều (14h-22h)';
+    
+    const html = `
+        <div class="form-group">
+            <label>Thời gian:</label>
+            <input class="form-control" value="${day} - ${shiftLabel}" disabled style="background:#eee;">
+        </div>
+        <div class="form-group">
+            <label>Chọn Nhân Viên:</label>
+            <select id="scheduleStaffSelect" class="form-control">${options}</select>
+        </div>
+    `;
+
+    showUniversalModal("Phân Công Ca Làm", html, async () => {
+        const select = document.getElementById("scheduleStaffSelect");
+        const staffId = select.value;
+        const staffName = select.options[select.selectedIndex].getAttribute('data-name');
+
+        const { data, error } = await _supabase.from('scheduling').insert([{
+            staff_id: staffId,
+            staff_name: staffName,
+            day_of_week: day,
+            shift_type: shiftId
+        }]).select();
+
+        if (error) alert("Lỗi: " + error.message);
+        else {
+            if(data) schedules.push(data[0]);
+            renderScheduleView();
+            closeUniversalModal();
+        }
+    });
+};
+
+// 5. Xóa Lịch
+window.deleteSchedule = async function(scheduleId) {
+    if (!confirm("Hủy ca làm việc này?")) return;
+    const { error } = await _supabase.from('scheduling').delete().eq('id', scheduleId);
+    if (error) alert("Lỗi: " + error.message);
+    else {
+        schedules = schedules.filter(s => s.id !== scheduleId);
+        renderScheduleView();
+    }
+};
+
+window.closeUniversalModal = function() {
+    document.getElementById("universalModal").style.display = "none";
+};
+
 window.showUniversalModal = function(title, bodyHtml, saveCallback) {
     const modal = document.getElementById("universalModal");
+    if(!modal) return console.error("Không tìm thấy modal!");
+
+    // Cập nhật tiêu đề và nội dung
     document.getElementById("modalTitle").innerText = title;
     document.getElementById("modalBody").innerHTML = bodyHtml;
     
+    // Xử lý nút Lưu (Xóa sự kiện cũ để tránh bị click đúp)
     const saveBtn = document.getElementById("modalSaveBtn");
     const newBtn = saveBtn.cloneNode(true);
     saveBtn.parentNode.replaceChild(newBtn, saveBtn);
     
-    newBtn.onclick = saveCallback;
+    // Gán sự kiện mới cho nút Lưu
+    newBtn.addEventListener('click', async () => {
+        // Hiển thị trạng thái đang lưu
+        newBtn.innerText = "Đang lưu...";
+        newBtn.disabled = true;
+        
+        try {
+            await saveCallback();
+        } catch (err) {
+            console.error(err);
+            alert("Có lỗi xảy ra: " + err.message);
+        } finally {
+            // Trả lại trạng thái nút
+            newBtn.innerText = "Lưu thay đổi";
+            newBtn.disabled = false;
+        }
+    });
+
+    // Hiển thị Modal
     modal.style.display = "flex";
 };
 
-window.closeUniversalModal = () => document.getElementById("universalModal").style.display = "none";
-// Hàm đóng Modal
-window.closeUniversalModal = function() {
-    document.getElementById("universalModal").style.display = "none";
-}
+// Đóng modal khi click ra ngoài
+window.onclick = function(event) {
+    const modal = document.getElementById("universalModal");
+    if (event.target == modal) {
+        window.closeUniversalModal();
+    }
+};

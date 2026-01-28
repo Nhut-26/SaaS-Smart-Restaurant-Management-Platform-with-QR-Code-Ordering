@@ -1,0 +1,8 @@
+version: '3'
+services:
+  web:
+    build: .
+    container_name: app_nha_hang
+    ports:
+      - "5500:80"
+    restart: always
