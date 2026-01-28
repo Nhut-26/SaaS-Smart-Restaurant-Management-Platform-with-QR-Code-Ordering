@@ -17,14 +17,35 @@ let customers = [
     { id: 2, name: "Trần Thị B", phone: "0912xxx", visits: 2, spend: 450000 }
 ];
 
-let staffs = [
-    { id: 1, name: "Nguyễn Văn Nhân", role: "Phục vụ", status: "Active", shift: "Sáng (08:00 - 14:00)", permissions: ["view_menu", "create_order"] },
-    { id: 2, name: "Trần Thị Bếp", role: "Đầu bếp", status: "Active", shift: "Chiều (14:00 - 22:00)", permissions: ["view_menu", "edit_menu"] }
+let staffs = [];
+
+let schedules = []; 
+
+let currentRestaurantId = null;
+
+const TIME_SLOTS = [
+    { id: '08-12', label: '08:00 - 12:00' },
+    { id: '12-16', label: '12:00 - 16:00' },
+    { id: '16-20', label: '16:00 - 20:00' },
+    { id: '20-24', label: '20:00 - 24:00' }
 ];
+
+async function fetchRestaurantId() {
+    // Lấy 1 dòng đầu tiên từ bảng 'restaurants' (hoặc bảng chứa thông tin nhà hàng của bạn)
+    const { data, error } = await _supabase.from('restaurants').select('id').limit(1).single();
+    
+    if (data) {
+        currentRestaurantId = data.id;
+        console.log("Đã lấy ID nhà hàng:", currentRestaurantId);
+    } else {
+        console.error("Không tìm thấy thông tin nhà hàng:", error);
+    }
+}
 
 // tự động khởi chạy
 document.addEventListener("DOMContentLoaded", () => {
     setupNavigation();
+    fetchRestaurantId();
     renderMenu(); // mặc định vào trang Menu
 });
 
@@ -40,7 +61,7 @@ function setupNavigation() {
             if (page === "table-reservation") renderTableReservation();
             if (page === "finance") renderFinance();
             if (page === "customer") renderCustomer();
-            if (page === "staff") renderStaff();
+            if (page === "staff") renderStaffTable();
         });
     });
 }
@@ -1147,142 +1168,339 @@ function renderCustomer() {
     content.innerHTML = html;
 }
 // Nhân viên
-function renderStaff() {
-    pageTitle.innerText = "Quản lý Nhân sự & Lịch làm";
-    
-    let html = `
+
+async function renderStaffTable() {
+    const content = document.getElementById("content");
+    content.innerHTML = `
         <div class="page-header">
-            <div style="display:flex; gap:10px;">
-                <button onclick="openStaffModal()" class="btn-green">+ Thêm nhân viên</button>
-                <button onclick="exportStaffExcel()" class="btn-gray"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <h2 id="page-title">Quản lý Nhân sự & Lịch làm</h2>
+            <div class="header-actions">
+                <button class="btn-primary" onclick="window.openStaffModal()"><i class="fas fa-plus"></i> Thêm nhân viên</button>
+                <button class="btn-success" onclick="window.exportStaffExcel()"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             </div>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Họ Tên</th>
-                    <th>Chức vụ</th>
-                    <th>Ca làm việc</th>
-                    <th>Quyền hạn</th>
-                    <th>Hành động</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${staffs.map(s => `
-                    <tr>
-                        <td><strong>${s.name}</strong></td>
-                        <td>${s.role}</td>
-                        <td><span style="color:#2980b9"><i class="far fa-clock"></i> ${s.shift}</span></td>
-                        <td>${s.permissions.map(p => `<small class="status-badge" style="background:#eee; color:#666; margin-right:2px">${p}</small>`).join('')}</td>
-                        <td>
-                            <button onclick="editStaff(${s.id})" class="btn-gray"><i class="fas fa-edit"></i></button>
-                            <button onclick="deleteStaff(${s.id})" class="btn-red"><i class="fas fa-trash"></i></button>
-                        </td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
+
+        <div class="dual-layout" style="display:flex; flex-direction:column; gap:30px;">
+            
+            <div class="card" style="padding:20px; border-radius:8px; background:white; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+                    <h3>Danh sách Nhân viên</h3>
+                    <input type="text" id="staffSearch" placeholder="Tìm tên..." onkeyup="window.filterStaff()" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px;">
+                </div>
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Họ Tên</th>
+                                <th>Chức Vụ</th>
+                                <th>Loại Hợp Đồng</th>
+                                <th>SĐT</th>
+                                <th>Hành Động</th>
+                            </tr>
+                        </thead>
+                        <tbody id="staffTableBody">
+                            <tr><td colspan="6" style="text-align:center;">Đang tải...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card" style="padding:20px; border-radius:8px; background:white; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                <div style="margin-bottom:15px;">
+                    <h3>📅 Bảng Xếp Ca Làm Việc (Hôm nay)</h3>
+                    <p style="font-size:13px; color:#666;">
+                        <span style="color:#2ecc71; font-weight:bold;">●</span> Click vào ô để xếp lịch. 
+                        <strong>Full-time</strong> sẽ tự động chọn 8 tiếng.
+                    </p>
+                </div>
+                <div class="table-container">
+                    <table class="table table-bordered schedule-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Nhân Viên</th>
+                                ${TIME_SLOTS.map(s => `<th>${s.label}</th>`).join('')}
+                                <th>Tổng giờ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scheduleTableBody">
+                            <tr><td colspan="6" style="text-align:center;">Đang tải lịch...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     `;
-    content.innerHTML = html;
+    
+    // Gọi tải dữ liệu
+    await Promise.all([loadStaffs(), loadSchedules()]);
+    // Sau khi tải xong cả 2 mới vẽ bảng để tránh lỗi đồng bộ
+    renderStaff(staffs);
+};
+
+// --- 3. XỬ LÝ DỮ LIỆU (DATA) ---
+
+// Tải nhân viên
+async function loadStaffs() {
+    let { data, error } = await _supabase.from('staffs').select('*').order('id', { ascending: true });
+    if (error) console.error("Lỗi tải NV:", error);
+    else staffs = data || [];
 }
 
-window.openStaffModal = function(item = null) {
-    const title = item ? "Chỉnh sửa nhân viên" : "Thêm nhân viên mới";
-    const bodyHtml = `
-        <div class="form-group">
-            <label>Tên nhân viên</label>
-            <input type="text" id="s_name" value="${item ? item.name : ''}">
-        </div>
-        <div class="form-group">
-            <label>Chức vụ</label>
-            <select id="s_role">
-                <option value="Phục vụ" ${item?.role === 'Phục vụ' ? 'selected' : ''}>Phục vụ</option>
-                <option value="Đầu bếp" ${item?.role === 'Đầu bếp' ? 'selected' : ''}>Đầu bếp</option>
-                <option value="Thu ngân" ${item?.role === 'Thu ngân' ? 'selected' : ''}>Thu ngân</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Lịch làm việc (Ca)</label>
-            <select id="s_shift">
-                <option value="Sáng (08:00 - 14:00)">Ca Sáng</option>
-                <option value="Chiều (14:00 - 22:00)">Ca Chiều</option>
-                <option value="Full-time">Cả ngày</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Phân quyền</label>
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size:14px;">
-                <label><input type="checkbox" name="perm" value="view_menu"> Xem Menu</label>
-                <label><input type="checkbox" name="perm" value="edit_menu"> Sửa Menu</label>
-                <label><input type="checkbox" name="perm" value="view_report"> Xem Báo cáo</label>
-                <label><input type="checkbox" name="perm" value="manage_table"> Quản lý bàn</label>
-            </div>
-        </div>
-    `;
+// Tải lịch làm việc (Bảng scheduling)
+async function loadSchedules() {
+    let { data, error } = await _supabase.from('scheduling').select('*');
+    if (error) console.error("Lỗi tải lịch:", error);
+    else schedules = data || [];
+}
 
-    showUniversalModal(title, bodyHtml, async () => {
-        const checkboxes = document.querySelectorAll('input[name="perm"]:checked');
-        const selectedPerms = Array.from(checkboxes).map(cb => cb.value);
-        
-        const newStaff = {
-            id: item ? item.id : Date.now(),
-            name: document.getElementById("s_name").value,
-            role: document.getElementById("s_role").value,
-            shift: document.getElementById("s_shift").value,
-            permissions: selectedPerms,
-            status: "Active"
-        };
+// Vẽ bảng nhân viên
+function renderStaff(data) {
+    const tbody = document.getElementById("staffTableBody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
 
-        if (item) {
-            const index = staffs.findIndex(s => s.id === item.id);
-            staffs[index] = newStaff;
-        } else {
-            staffs.push(newStaff);
-        }
-        
-        renderStaff();
-        alert("Đã cập nhật danh sách nhân sự!");
+    if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Chưa có dữ liệu</td></tr>`;
+    } else {
+        data.forEach(s => {
+            const roleColor = s.role === 'Quản lý' ? '#e74c3c' : (s.role === 'Thu ngân' ? '#2ecc71' : '#3498db');
+            const typeBadge = s.shift === 'Full-time' ? 
+                '<span class="badge-ft" style="background:#2c3e50; color:white; padding:2px 6px; border-radius:4px; font-size:11px;">Full-time</span>' : 
+                '<span class="badge-pt" style="background:#f39c12; color:white; padding:2px 6px; border-radius:4px; font-size:11px;">Part-time</span>';
+            
+            // FIX: Thêm dấu nháy đơn '${s.id}' để tránh lỗi cú pháp nếu ID là chuỗi
+            tbody.innerHTML += `
+                <tr>
+                    <td>#${s.id}</td>
+                    <td><strong>${s.name}</strong></td>
+                    <td><span style="background:${roleColor}; color:white; padding:4px 8px; border-radius:4px; font-size:12px;">${s.role}</span></td>
+                    <td>${typeBadge}</td>
+                    <td>${s.phone || '-'}</td>
+                    <td>
+                        <button class="btn-icon edit" onclick="window.editStaff('${s.id}')"><i class="fas fa-edit"></i></button>
+                        <button class="btn-icon delete" onclick="window.deleteStaff('${s.id}')"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+    renderScheduleTable();
+}
+
+// Vẽ bảng lịch
+function renderScheduleTable() {
+    const tbody = document.getElementById("scheduleTableBody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    staffs.forEach(staff => {
+        // Lọc lịch của nhân viên này
+        // FIX: Dùng == thay vì === để so sánh số và chuỗi an toàn
+        const staffSchedules = schedules.filter(sch => sch.staff_id == staff.id);
+        const totalHours = staffSchedules.length * 4;
+
+        let rowHtml = `
+            <tr>
+                <td>
+                    <div style="font-weight:bold; font-size:15px;">${staff.name}</div>
+                    <div style="font-size:12px; margin-top:4px; color:#666;">
+                        ${staff.shift} - ${staff.role}
+                    </div>
+                </td>
+        `;
+
+        TIME_SLOTS.forEach(slot => {
+            const isChecked = staffSchedules.some(sch => sch.slot === slot.id);
+            
+            const bgStyle = isChecked ? 'background-color:#e8f5e9; border:1px solid #2ecc71;' : '';
+            const icon = isChecked ? '<i class="fas fa-check-circle" style="color:#2ecc71; font-size:24px;"></i>' : '<i class="far fa-circle" style="color:#ddd; font-size:24px;"></i>';
+            
+            // FIX QUAN TRỌNG: Thêm dấu nháy đơn '${staff.id}'
+            rowHtml += `
+                <td style="text-align:center; cursor:pointer; vertical-align:middle; transition:0.2s; ${bgStyle}" 
+                    onclick="window.toggleSchedule('${staff.id}', '${slot.id}')"
+                    onmouseover="this.style.backgroundColor='#f9f9f9'"
+                    onmouseout="this.style.backgroundColor='${isChecked ? '#e8f5e9' : 'transparent'}'">
+                    ${icon}
+                </td>
+            `;
+        });
+
+        rowHtml += `
+                <td style="text-align:center; font-weight:bold; vertical-align:middle; color:${totalHours >= 8 ? '#27ae60' : '#7f8c8d'}">
+                    ${totalHours}h
+                </td>
+            </tr>
+        `;
+        tbody.innerHTML += rowHtml;
     });
 }
 
-window.editStaff = function(id) {
-    const item = staffs.find(s => s.id === id);
-    openStaffModal(item);
+// --- 4. LOGIC CLICK VÀ LƯU VÀO DB ---
+window.toggleSchedule = async function(staffId, clickedSlotId) {
+    console.log("Đã click:", staffId, clickedSlotId); // Debug xem nhận sự kiện chưa
+
+    // FIX: Dùng == để tìm staff (đề phòng staffId truyền vào là chuỗi còn trong data là số)
+    const staff = staffs.find(s => s.id == staffId);
+    if (!staff) {
+        console.error("Không tìm thấy nhân viên với ID:", staffId);
+        return;
+    }
+
+    // Xác định các Slot cần xử lý (Logic 8 tiếng cho Full-time)
+    let slotsToProcess = [clickedSlotId]; 
+
+    if (staff.shift === 'Full-time') {
+        if (clickedSlotId === '08-12') slotsToProcess = ['08-12', '12-16'];
+        else if (clickedSlotId === '12-16') slotsToProcess = ['12-16', '16-20'];
+        else if (clickedSlotId === '16-20') slotsToProcess = ['16-20', '20-24'];
+        else if (clickedSlotId === '20-24') {
+            alert("⚠️ Full-time không thể bắt đầu lúc 20:00 (chỉ còn 4 tiếng).");
+            return;
+        }
+    }
+
+    try {
+        // Kiểm tra xem slot đã tồn tại chưa
+        const existingItems = schedules.filter(sch => 
+            sch.staff_id == staffId && slotsToProcess.includes(sch.slot)
+        );
+        
+        // Nếu đã có -> XÓA (Uncheck)
+        if (existingItems.length > 0) {
+            const idsToDelete = existingItems.map(x => x.id);
+            
+            // Xóa DB
+            const { error } = await _supabase.from('scheduling').delete().in('id', idsToDelete);
+            if (error) throw error;
+
+            // Xóa local
+            schedules = schedules.filter(x => !idsToDelete.includes(x.id));
+        } 
+        // Nếu chưa có -> THÊM (Check)
+        else {
+            const newRows = slotsToProcess.map(slot => ({
+                restaurant_id: currentRestaurantId,
+                staff_id: staffId,
+                staff_name: staff.name,
+                slot: slot
+            }));
+
+            // Thêm DB
+            const { data, error } = await _supabase.from('scheduling').insert(newRows).select();
+            if (error) throw error;
+
+            // Thêm local
+            if (data) schedules.push(...data);
+        }
+
+        renderScheduleTable();
+
+    } catch (err) {
+        console.error("Lỗi cập nhật lịch:", err);
+        alert("Lỗi server: " + err.message);
+    }
+};
+
+// --- 5. CÁC FORM MODAL ---
+window.openStaffModal = function(staffId = null) {
+    // FIX: Tìm nhân viên bằng ID thay vì truyền object trực tiếp để tránh lỗi chuỗi
+    let staff = null;
+    if(staffId) staff = staffs.find(s => s.id == staffId);
+
+    const isEdit = staff !== null;
+    const formHtml = `
+        <div class="form-group"><label>Họ Tên:</label><input type="text" id="sName" class="form-control" value="${staff ? staff.name : ''}"></div>
+        <div class="dual-layout" style="gap:15px">
+            <div class="form-group" style="flex:1"><label>Chức Vụ:</label>
+                <select id="sRole" class="form-control">
+                    <option value="Quản lý" ${staff?.role === 'Quản lý'?'selected':''}>Quản lý</option>
+                    <option value="Thu ngân" ${staff?.role === 'Thu ngân'?'selected':''}>Thu ngân</option>
+                    <option value="Phục vụ" ${staff?.role === 'Phục vụ'?'selected':''}>Phục vụ</option>
+                    <option value="Đầu bếp" ${staff?.role === 'Đầu bếp'?'selected':''}>Đầu bếp</option>
+                    <option value="Vệ sinh" ${staff?.role === 'Vệ sinh'?'selected':''}>Vệ sinh</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex:1"><label>Loại Hợp Đồng:</label>
+                <select id="sShift" class="form-control">
+                    <option value="Full-time" ${staff?.shift === 'Full-time'?'selected':''}>Full-time (8h)</option>
+                    <option value="Part-time" ${staff?.shift === 'Part-time'?'selected':''}>Part-time (4h)</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group"><label>SĐT:</label><input type="text" id="sPhone" class="form-control" value="${staff ? staff.phone : ''}"></div>
+    `;
+
+    showUniversalModal(isEdit ? "Sửa Nhân Viên" : "Thêm Nhân Viên", formHtml, async () => {
+        const payload = {
+            name: document.getElementById("sName").value,
+            role: document.getElementById("sRole").value,
+            shift: document.getElementById("sShift").value,
+            phone: document.getElementById("sPhone").value
+        };
+        
+        if(!payload.name) return alert("Vui lòng nhập tên!");
+
+        try {
+            if (isEdit) {
+                await _supabase.from('staffs').update(payload).eq('id', staff.id);
+            } else {
+                await _supabase.from('staffs').insert([payload]);
+            }
+            closeUniversalModal();
+            // Reload lại dữ liệu để đồng bộ
+            await loadStaffs(); 
+            renderStaffTable(staffs);
+        } catch (e) {
+            alert("Lỗi lưu: " + e.message);
+        }
+    });
+};
+
+window.editStaff = (id) => window.openStaffModal(id);
+
+window.deleteStaff = async (id) => {
+    if(confirm("Bạn có chắc muốn xóa?")) {
+        await _supabase.from('staffs').delete().eq('id', id);
+        await _supabase.from('scheduling').delete().eq('staff_id', id);
+        await loadStaffs();
+        renderStaffTable(staffs);
+    }
+};
+
+window.filterStaff = function() {
+    const term = document.getElementById("staffSearch").value.toLowerCase();
+    const filtered = staffs.filter(s => (s.name || '').toLowerCase().includes(term));
+    renderStaffTable(filtered);
 };
 
 window.exportStaffExcel = function() {
-    // Chuẩn bị dữ liệu để xuất
-    const dataToExport = staffs.map(s => ({
-        "Họ Tên": s.name,
-        "Chức Vụ": s.role,
-        "Ca Làm Việc": s.shift
+    if (staffs.length === 0) return alert("Chưa có dữ liệu!");
+    const dataExport = staffs.map(s => ({
+        "ID": s.id, "Họ Tên": s.name, "Chức Vụ": s.role, "Loại HĐ": s.shift, "SĐT": s.phone
     }));
-
-    // Tạo worksheet
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "NhanVien");
-
-    // Xuất file
-    XLSX.writeFile(workbook, "Danh_Sach_Nhan_Vien.xlsx");
+    const ws = XLSX.utils.json_to_sheet(dataExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "NhanVien");
+    XLSX.writeFile(wb, "DanhSachNhanVien.xlsx");
 };
 
+// --- HELPER FUNCTIONS ---
 window.showUniversalModal = function(title, bodyHtml, saveCallback) {
     const modal = document.getElementById("universalModal");
     document.getElementById("modalTitle").innerText = title;
     document.getElementById("modalBody").innerHTML = bodyHtml;
     
     const saveBtn = document.getElementById("modalSaveBtn");
-    saveBtn.onclick = async () => {
-        saveBtn.innerText = "Đang lưu...";
-        saveBtn.disabled = true;
-        await saveCallback();
-        saveBtn.innerText = "Lưu thay đổi";
-        saveBtn.disabled = false;
-        closeUniversalModal();
-    };
+    const newBtn = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(newBtn, saveBtn);
+    
+    newBtn.onclick = saveCallback;
     modal.style.display = "flex";
-}
+};
+
+window.closeUniversalModal = () => document.getElementById("universalModal").style.display = "none";
 // Hàm đóng Modal
 window.closeUniversalModal = function() {
     document.getElementById("universalModal").style.display = "none";
