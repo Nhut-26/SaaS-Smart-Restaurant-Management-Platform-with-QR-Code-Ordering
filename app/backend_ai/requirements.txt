@@ -1,0 +1,9 @@
+﻿
+flask-cors
+python-dotenv
+google-generativeai
+supabase
+asyncio
+aiohttp
+gunicorn
+Flask[async]>=2.0
