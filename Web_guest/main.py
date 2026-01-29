@@ -338,19 +338,15 @@ def guest_page(
     bill_qty, bill_total, bill_lines = compute_bill_from_orders(orders)
     st = get_table_state(k)
 
-    # danh sách bàn, trạng thái bàn (lấy từ Supabase nếu có)
+    # danh sách bàn, trạng thái bàn 
     tables = _get_tables_for_ui(restaurant_id)
     table_status: Dict[str, str] = {}
     for t in tables:
         tk = table_key(restaurant_id, branch_id, t)
         table_status[t] = table_ui_status(tk)
 
-    # =========================
-    # ✅ THÊM: lấy tên nhà hàng từ bảng restaurants
-    # =========================
     restaurant_name = _get_restaurant_name_for_ui(restaurant_id)
-    # =========================
-
+ 
     return templates.TemplateResponse(
         "guest_menu.html",
         {
@@ -378,11 +374,8 @@ def guest_page(
             "bill_requested_at": st.get("bill_requested_at"),
             "bill_paid": bool(st.get("paid")),
             "bill_paid_at": st.get("paid_at"),
-            # =========================
-            # ✅ THÊM: đưa tên nhà hàng qua template để đổi chữ navbar
-            # =========================
             "restaurant_name": restaurant_name,
-            # =========================
+            
         },
     )
 
@@ -633,7 +626,6 @@ def _get_tables_for_ui(restaurant_id: str) -> List[str]:
 
 
 def _get_menu_from_supabase(restaurant_id: str) -> List[MenuItem]:
-    # Nếu restaurant_id không phải UUID thì bỏ filter để vẫn lấy được dữ liệu thật.
     filters = {"restaurant_id": restaurant_id} if _looks_like_uuid(restaurant_id) else None
 
     rows = _sb_select(
@@ -680,11 +672,6 @@ try:
 except Exception:
     pass
 get_menu = _get_menu_from_supabase
-
-
-# =============================================================================
-# ✅ THÊM MỚI: Kết nối bảng menu_images + restaurants (chỉ thêm, không đụng code cũ)
-# =============================================================================
 
 def _sb_select_params(table: str, *, params: Dict[str, str]) -> List[dict]:
     """
@@ -770,7 +757,7 @@ def _get_menu_images_map_for_menu_ids(
     if not menu_ids:
         return {}
 
-    # Nếu restaurant_id là UUID -> thử filter tenant_id (vì menu_images có tenant_id)
+    # Nếu restaurant_id là UUID, thử filter tenant_id 
     tenant_filter = None
     if _looks_like_uuid(restaurant_id):
         tenant_filter = f"eq.{restaurant_id}"
@@ -870,8 +857,6 @@ def _get_restaurant_name_for_ui(restaurant_id: str) -> Optional[str]:
     nm = rows[0].get("name")
     return str(nm) if nm else None
 
-
-# ✅ Override get_menu = bản có ảnh (chỉ thêm dòng này, không xoá code cũ)
 try:
     from functools import lru_cache as _lru_cache2
     _get_menu_from_supabase_with_images = _lru_cache2(maxsize=128)(_get_menu_from_supabase_with_images)
@@ -881,10 +866,6 @@ except Exception:
 
 get_menu = _get_menu_from_supabase_with_images
 
-# =============================================================================
-# ✅ (OPTIONAL) THÊM: endpoint tạo QR PNG (nếu bạn muốn in QR từ server)
-# QR chứa luôn restaurant_id trong URL vì URL path đã có restaurant_id
-# =============================================================================
 try:
     from fastapi.responses import StreamingResponse
     from io import BytesIO
