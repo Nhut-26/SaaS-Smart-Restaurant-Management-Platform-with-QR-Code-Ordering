@@ -1,9 +1,25 @@
 const content = document.getElementById("content");
 const pageTitle = document.getElementById("page-title");
+const SUPABASE_URL  = 'https://vhjxxgajenkzuykkqloi.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzQ5ODIyMiwiZXhwIjoyMDgzMDc0MjIyfQ.c6AfU8do1i4pgxiE-1SCrT6OU6Sgj4aSbhB-Rh981MM';
+const supabaseClient = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+);
+(async () => {
+    const { data } = await supabaseClient.auth.getSession();
+    if (!data || !data.session) {
+        window.location.replace("../Login/login.html");
+    }
+})();
 
-const supabaseUrl = 'https://vhjxxgajenkzuykkqloi.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzQ5ODIyMiwiZXhwIjoyMDgzMDc0MjIyfQ.c6AfU8do1i4pgxiE-1SCrT6OU6Sgj4aSbhB-Rh981MM';
-const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+if (!currentUser) {
+    window.location.href = "../Login/login.html";
+}
+const ownerNameEl = document.getElementById("owner-name");
+ownerNameEl.textContent = currentUser.ownerName || currentUser.email;
+
 let allFoods = [];
 
 let allTables = [];
@@ -35,7 +51,7 @@ const TIME_SLOTS = [
 
 async function fetchRestaurantId() {
     // Lấy 1 dòng đầu tiên từ bảng 'restaurants' (hoặc bảng chứa thông tin nhà hàng của bạn)
-    const { data, error } = await _supabase.from('restaurants').select('id').limit(1).single();
+    const { data, error } = await supabaseClient.from('restaurants').select('id').limit(1).single();
     
     if (data) {
         currentRestaurantId = data.id;
@@ -75,7 +91,7 @@ async function renderMenu() {
     content.innerHTML = `<div class="loading">Đang tải dữ liệu từ Database...</div>`;
 
     try {
-        const { data, error } = await _supabase.from('menus').select('*').order('id', { ascending: true });
+        const { data, error } = await supabaseClient.from('menus').select('*').order('id', { ascending: true });
         if (error) throw error;
         allFoods = data;
 
@@ -151,7 +167,8 @@ async function openAddMenuForm() {
     const description = prompt("Nhập mô tả món ăn (tùy chọn):");
 
     if (name && price && category) {
-        const { error } = await _supabase
+        const { error } = await supabaseClient
+
             .from('menus')
             .insert([{ 
                 food_name: name, 
@@ -177,7 +194,7 @@ window.deleteFood = async function(id) {
     if (!isConfirm) return;
 
     try {
-        const { error } = await _supabase
+        const { error } = await supabaseClient
             .from('menus')
             .delete()
             .eq('id', id);
@@ -238,9 +255,9 @@ window.openAddMenuForm = function(item = null) {
         const price = document.getElementById("fPrice").value;
         
         if (item) {
-            await _supabase.from('menus').update({ food_name: name, price: price }).eq('id', item.id);
+            await supabaseClient.from('menus').update({ food_name: name, price: price }).eq('id', item.id);
         } else {
-            await _supabase.from('menus').insert([{ food_name: name, price: price }]);
+            await supabaseClient.from('menus').insert([{ food_name: name, price: price }]);
         }
         renderMenu(); // Load lại bảng
     });
@@ -295,9 +312,9 @@ window.openMenuModal = function(item = null) {
         };
 
         if (item) {
-            await _supabase.from('menus').update(payload).eq('id', item.id);
+            await supabaseClient.from('menus').update(payload).eq('id', item.id);
         } else {
-            await _supabase.from('menus').insert([payload]);
+            await supabaseClient.from('menus').insert([payload]);
         }
         renderMenu();
     });
@@ -341,7 +358,7 @@ window.editFood = function(id) {
             category: document.getElementById("edit_m_cat").value
         };
 
-        const { error } = await _supabase
+        const { error } = await supabaseClient
             .from('menus')
             .update(updatedData)
             .eq('id', id);
@@ -370,14 +387,14 @@ window.filterMenu = function() {
 
 // Chỗ ngồi
 async function fetchTableData() {
-    const { data: tables, error: tError } = await _supabase
+    const { data: tables, error: tError } = await supabaseClient
         .from('tables')
         .select('*')
         .order('table_name');
     if (tError) { console.error(tError); return; }
     allTables = tables;
 
-    const { data: bookings, error: bError } = await _supabase
+    const { data: bookings, error: bError } = await supabaseClient
         .from('bookings')
         .select('*');
     if (bError) { console.error(bError); return; }
@@ -578,10 +595,10 @@ window.handleTableClick = function(tableId) {
 
         showUniversalModal("Trả bàn", bodyHtml, async () => {
             try {
-                await _supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
+                await supabaseClient.from('tables').update({ status: 'available' }).eq('id', tableId);
                 
                 if (guest) {
-                    await _supabase.from('bookings').update({ status: 'completed' }).eq('id', guest.id);
+                    await supabaseClient.from('bookings').update({ status: 'completed' }).eq('id', guest.id);
                 }
 
                 alert("Đã trả bàn thành công!");
@@ -602,7 +619,7 @@ window.handleTableClick = function(tableId) {
         showUniversalModal("Cấu hình bàn", bodyHtml, async () => {
             const name = document.getElementById("edit_t_name").value;
             const seats = document.getElementById("edit_t_seats").value;
-            await _supabase.from('tables').update({ table_name: name, capacity: seats }).eq('id', tableId);
+            await supabaseClient.from('tables').update({ table_name: name, capacity: seats }).eq('id', tableId);
             await fetchTableData();
         });
     }
@@ -615,8 +632,8 @@ window.openAddTableModal = function() {
     `;
     showUniversalModal("Thêm bàn mới", bodyHtml, async () => {
         const name = document.getElementById("new_t_name").value;
-        const seats = document.getElementById("new_t_capacity").value;
-        await _supabase.from('tables').insert([{ name, capacity, status: 'available' }]);
+        const seats = document.getElementById("new_t_seats").value;
+        await supabaseClient.from('tables').insert([{ table_name: name, capacity: seats, status: 'available' }]);
         renderTableReservation();
     });
 }
@@ -722,14 +739,14 @@ window.assignTableModal = function(reservationId) {
 
         try {
             // 1. Cập nhật trạng thái bàn thành 'occupied' (Có người)
-            const { error: errTable } = await _supabase
+            const { error: errTable } = await supabaseClient
                 .from('tables')
                 .update({ status: 'occupied' })
                 .eq('id', selectedTableId);
             
             if (errTable) throw errTable;
 
-            const { error: errBooking } = await _supabase
+            const { error: errBooking } = await supabaseClient
                 .from('bookings')
                 .update({ 
                     status: 'confirmed', 
@@ -769,7 +786,7 @@ window.addNewTable = function() {
         if (!name) { alert("Vui lòng nhập tên bàn!"); return; }
 
         try {
-            const { error } = await _supabase.from('tables').insert([
+            const { error } = await supabaseClient.from('tables').insert([
                 { table_name: name, capacity: parseInt(capacity), status: 'available' }
             ]);
             
@@ -787,7 +804,7 @@ window.deleteTable = async function(id) {
     if (!confirm("Bạn có chắc chắn muốn xóa bàn này không?")) return;
     
     try {
-        const { error } = await _supabase.from('tables').delete().eq('id', id);
+        const { error } = await supabaseClient.from('tables').delete().eq('id', id);
         if (error) throw error;
         await fetchTableData();
     } catch (err) {
@@ -880,7 +897,7 @@ window.processImport = async function(mode) {
         if (mode === 'replace') {
             if (!confirm("CẢNH BÁO: Toàn bộ bàn cũ sẽ bị xóa và thay bằng danh sách mới. Các khách đang ngồi sẽ được chuyển về danh sách 'Chờ xếp chỗ'.")) return;
             
-            const { error: updateError } = await _supabase
+            const { error: updateError } = await supabaseClient
                 .from('bookings')
                 .update({ 
                     table_id: null,
@@ -892,7 +909,7 @@ window.processImport = async function(mode) {
                 console.warn("Lỗi cập nhật booking:", updateError.message);
             }
 
-            const { error: delError } = await _supabase
+            const { error: delError } = await supabaseClient
                 .from('tables')
                 .delete()
                 .not('id', 'is', null);
@@ -900,7 +917,7 @@ window.processImport = async function(mode) {
             if (delError) throw new Error("Không thể xóa bàn cũ (Lỗi ràng buộc dữ liệu): " + delError.message);
         }
 
-        const { error: insertError } = await _supabase.from('tables').insert(formattedData);
+        const { error: insertError } = await supabaseClient.from('tables').insert(formattedData);
         if (insertError) throw insertError;
 
         alert("Cập nhật sơ đồ bàn thành công! Tất cả khách cũ đã được đưa về danh sách Chờ.");
@@ -1172,10 +1189,10 @@ window.renderCustomerPage = async function() {
         // Tải dữ liệu song song nếu chưa có
         const promises = [];
         if (!allTables || allTables.length === 0) {
-            promises.push(_supabase.from('tables').select('*').then(({ data }) => allTables = data || []));
+            promises.push(supabaseClient.from('tables').select('*').then(({ data }) => allTables = data || []));
         }
         if (!allReservations || allReservations.length === 0) {
-            promises.push(_supabase.from('bookings').select('*').then(({ data }) => allReservations = data || []));
+            promises.push(supabaseClient.from('bookings').select('*').then(({ data }) => allReservations = data || []));
         }
         if (promises.length > 0) await Promise.all(promises);
 
@@ -1462,8 +1479,8 @@ window.renderStaffPage = async function() {
         const promises = [];
         
         // Luôn tải lại để đảm bảo dữ liệu mới nhất
-        promises.push(_supabase.from('staffs').select('*').order('id', { ascending: true }).then(({ data }) => staffs = data || []));
-        promises.push(_supabase.from('scheduling').select('*').then(({ data }) => scheduling = data || []));
+        promises.push(supabaseClient.from('staffs').select('*').order('id', { ascending: true }).then(({ data }) => staffs = data || []));
+        promises.push(supabaseClient.from('scheduling').select('*').then(({ data }) => scheduling = data || []));
         
         await Promise.all(promises);
 
@@ -1727,7 +1744,7 @@ window.openAddStaffModal = function() {
         }
 
         // Gửi lên Supabase
-        const { data, error } = await _supabase
+        const { data, error } = await supabaseClient
             .from('staffs')
             .insert([{ name: name, role: role, shift: shift, phone: phone }])
             .select();
@@ -1776,7 +1793,7 @@ window.editStaff = function(id) {
         const shift = document.getElementById("editStaffShift").value;
         const phone = document.getElementById("editStaffPhone").value;
 
-        const { error } = await _supabase.from('staffs').update({ name, role, shift, phone }).eq('id', id);
+        const { error } = await supabaseClient.from('staffs').update({ name, role, shift, phone }).eq('id', id);
         if (error) alert("Lỗi update: " + error.message);
         else {
             // Update local array
@@ -1795,9 +1812,9 @@ window.deleteStaff = async function(id) {
     if(!confirm("Bạn có chắc muốn xóa nhân viên này?")) return;
     
     // Xóa cả lịch làm việc của nhân viên đó trước (để sạch data)
-    await _supabase.from('scheduling').delete().eq('staff_id', id);
+    await supabaseClient.from('scheduling').delete().eq('staff_id', id);
 
-    const { error } = await _supabase.from('staffs').delete().eq('id', id);
+    const { error } = await supabaseClient.from('staffs').delete().eq('id', id);
     if(error) alert("Lỗi xóa: " + error.message);
     else {
         staffs = staffs.filter(s => s.id !== id);
@@ -1827,7 +1844,7 @@ window.openAddScheduleModal = function(day, shiftId) {
         const staffId = select.value;
         const staffName = select.options[select.selectedIndex].getAttribute('data-name');
 
-        const { data, error } = await _supabase.from('scheduling').insert([{
+        const { data, error } = await supabaseClient.from('scheduling').insert([{
             staff_id: staffId,
             staff_name: staffName,
             day_of_week: day,
@@ -1846,7 +1863,7 @@ window.openAddScheduleModal = function(day, shiftId) {
 // 5. Xóa Lịch
 window.deleteSchedule = async function(scheduleId) {
     if (!confirm("Hủy ca làm việc này?")) return;
-    const { error } = await _supabase.from('scheduling').delete().eq('id', scheduleId);
+    const { error } = await supabaseClient.from('scheduling').delete().eq('id', scheduleId);
     if (error) alert("Lỗi: " + error.message);
     else {
         schedules = schedules.filter(s => s.id !== scheduleId);
@@ -1899,4 +1916,21 @@ window.onclick = function(event) {
     if (event.target == modal) {
         window.closeUniversalModal();
     }
+
 };
+document.addEventListener("DOMContentLoaded", () => {
+    const logoutBtn = document.getElementById("logoutBtn");
+    if (!logoutBtn) return;
+
+    logoutBtn.addEventListener("click", async () => {
+        const { error } = await supabaseClient.auth.signOut();
+
+        if (error) {
+            alert("❌ Đăng xuất lỗi: " + error.message);
+        } else {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.replace("../Login/login.html");
+        }
+    });
+});

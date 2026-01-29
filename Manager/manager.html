@@ -28,7 +28,10 @@
         <div class="content-wrapper">
             <header class="header">
                 <h2 id="page-title">Quản lý Thực đơn</h2>
-                <div class="user-info">Quản lý: <strong>Chi nhánh 1</strong></div>
+                <div class="user-info">Quản lý: <span id="owner-name">---</span>
+                <button id="logoutBtn">Đăng xuất</button>
+            
+        </div>
             </header>
             <main id="content" class="main-content"></main>
         </div>
@@ -46,6 +49,7 @@
                     <button onclick="closeUniversalModal()" class="btn-gray">Hủy bỏ</button>
                     <button id="modalSaveBtn" class="btn-green">Lưu thay đổi</button>
                 </div>
+                
             </div>
         </div>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>

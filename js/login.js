@@ -72,19 +72,29 @@ if (formLogin) {
 
     showMessage("Đang đăng nhập...", "success");
 
-    const { error } = await supaClient.auth.signInWithPassword({
-      email,
-      password
-    });
+    const { data, error } = await supaClient.auth.signInWithPassword({
+  email,
+  password
+});
 
-    if (error) {
-      showMessage("Đăng nhập thất bại: " + error.message, "error");
-      return;
-    }
+if (error) {
+  showMessage("Đăng nhập thất bại: " + error.message, "error");
+  return;
+}
 
-    showMessage("Đăng nhập thành công! Đang chuyển trang...", "success");
+// ✅ LẤY ĐÚNG TÊN TỪ SUPABASE
+const userInfo = {
+  id: data.user.id,
+  email: data.user.email,
+  ownerName: data.user.user_metadata.full_name
+};
 
-    await new Promise(r => setTimeout(r, 1500));
+// ✅ LƯU USER ĐANG LOGIN
+localStorage.setItem("currentUser", JSON.stringify(userInfo));
+
+showMessage("Đăng nhập thành công! Đang chuyển trang...", "success");
+
+await new Promise(r => setTimeout(r, 1500));
 window.location.href = "../Manager/manager.html";
-    });
+  });
 }

@@ -703,3 +703,15 @@ button { background-color: var(--manager-primary); }
     color: var(--manager-primary);
     background: #fff5f8;
 }
+.btn-logout {
+    margin-left: 12px;
+    padding: 6px 12px;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.btn-logout:hover {
+    background: #c0392b;
+}

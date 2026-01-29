@@ -1,9 +1,43 @@
 const content = document.getElementById("content");
 const pageTitle = document.getElementById("page-title");
 
-const supabaseUrl = 'https://vhjxxgajenkzuykkqloi.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzQ5ODIyMiwiZXhwIjoyMDgzMDc0MjIyfQ.c6AfU8do1i4pgxiE-1SCrT6OU6Sgj4aSbhB-Rh981MM';
-const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+const SUPABASE_URL = "https://vhjxxgajenkzuykkqloi.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0OTgyMjIsImV4cCI6MjA4MzA3NDIyMn0.l04T4IY-2mdFTvVhksDBmL5buErB1Pfa97GQOgRVtCg";
+
+const supabase = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
+document.addEventListener("DOMContentLoaded", () => {
+  checkAuth();
+  setupNavigation();
+  renderSystemDashboard();
+});
+
+async function checkAuth() {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session) {
+   window.location.href = "../login.html";
+
+    return;
+  }
+
+  const adminNameEl = document.getElementById("adminName");
+  if (adminNameEl) {
+    adminNameEl.innerText =
+      session.user.user_metadata?.full_name || session.user.email;
+  }
+}
+
+const logoutBtn = document.getElementById("logout-btn");
+
+logoutBtn.addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  window.location.href = "../login.html";
+});
+
 
 // Dữ liệu ảo
 let tenants = [

@@ -259,3 +259,54 @@ tr.row-paid:hover {
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 .status-dot.online { background-color: #2ecc71; box-shadow: 0 0 5px #2ecc71; }
 .status-dot.offline { background-color: #95a5a6; }
+
+/* Sidebar phải là flex column */
+.sidebar {
+    display: flex;
+    flex-direction: column;
+}
+
+
+/* Khối dưới cùng */
+.sidebar-footer {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+}
+
+/* Tên user */
+.sidebar-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #ffffff;            /* MÀU TÊN – KHÔNG MẤT */
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+
+.sidebar-user i {
+    font-size: 18px;
+    color: #4da3ff;
+}
+
+/* Nút đăng xuất NGẮN */
+.logout-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    padding: 6px 14px;          /* NGẮN */
+    font-size: 13px;
+
+    background: #2d8cf0;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.logout-btn:hover {
+    background: #1c6ed5;
+}
