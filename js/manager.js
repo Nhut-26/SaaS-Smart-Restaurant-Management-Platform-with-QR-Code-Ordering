@@ -120,6 +120,7 @@ async function renderMenu() {
                         <th>Số lượng hàng tồn kho</th>
                         <th>Loại món</th>
                         <th>Mô tả món</th>
+                        <th>Edit</th>
                     </tr>
                 </thead>
                 <tbody id="menuTableBody"></tbody>
@@ -145,7 +146,7 @@ function renderTableBody(data) {
             <td><strong>${f.food_name}</strong></td>
             <td>${Number(f.price).toLocaleString()}đ</td>
             <td>${f.is_available ? 'Còn hàng' : 'Hết hàng'}</td>
-            <td>${f.best_seller ? 'Có' : 'Không'}</td>
+            <td>${f.description ? 'Có' : 'Không'}</td>
             <td>${Number(f.stock_count).toLocaleString()}</td>
             <td><span class="status-badge active">${f.category}</span></td>
             <td>${f.description || '---'}</td>
@@ -161,7 +162,7 @@ async function openAddMenuForm() {
     const name = prompt("Nhập tên món ăn:");
     const price = prompt("Nhập giá bán (VNĐ):");
     const is_available = confirm("Món này còn hàng không? Nhấn 'OK' cho Còn, 'Hủy' cho Hết.");
-    const is_best_seller = confirm("Món này có phải sản phẩm bán chạy không? Nhấn 'Yes' cho Có, 'No' cho Không.");
+    const is_description = confirm("Món này có phải sản phẩm bán chạy không? Nhấn 'Yes' cho Có, 'No' cho Không.");
     const stock_count = prompt("Nhập số lượng hàng tồn kho:");
     const category = prompt("Nhập loại (Món chính/Đồ uống/Tráng miệng):");
     const description = prompt("Nhập mô tả món ăn (tùy chọn):");
@@ -174,7 +175,7 @@ async function openAddMenuForm() {
                 food_name: name, 
                 price: parseInt(price),
                 is_available: is_available,
-                best_seller: best_seller,
+                description: description,
                 stock_quantity: parseInt(stock_quantity),
                 category: category,
                 description: description
@@ -229,8 +230,8 @@ window.openAddMenuForm = function(item = null) {
         <div class="form-group">
             <label>Sản phẩm bán chạy</label>
             <select id="m_bestseller">
-                <option value="true" ${item?.best_seller ? 'selected' : ''}>Có</option>
-                <option value="false" ${!item?.best_seller ? 'selected' : ''}>Không</option>
+                <option value="true" ${item?.description ? 'selected' : ''}>Có</option>
+                <option value="false" ${!item?.description ? 'selected' : ''}>Không</option>
             </select>
         </div>
         <div class="form-group">
@@ -265,58 +266,115 @@ window.openAddMenuForm = function(item = null) {
 
 window.openMenuModal = function(item = null) {
     const title = item ? "Chỉnh sửa món ăn" : "Thêm món mới";
+    
+    const currentImageSrc = item && item.image ? item.image : 'https://via.placeholder.com/150?text=No+Image';
+
     const bodyHtml = `
-        <div class="form-group">
-            <label>Tên món</label>
-            <input type="text" id="m_name" value="${item ? item.food_name : ''}">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px;">
+                <div class="form-group">
+                    <label>Tên món</label>
+                    <input type="text" id="m_name" value="${item ? item.food_name : ''}" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Giá bán (VNĐ)</label>
+                    <input type="number" id="m_price" value="${item ? item.price : ''}" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Trạng thái</label>
+                    <select id="m_available" class="form-control">
+                        <option value="true" ${item?.is_available ? 'selected' : ''}>Còn hàng</option>
+                        <option value="false" ${!item?.is_available ? 'selected' : ''}>Hết hàng</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Số lượng tồn kho</label>
+                    <input type="number" id="m_stock" value="${item ? item.stock_count : '0'}" class="form-control">
+                </div>
+                 <div class="form-group">
+                    <label>Danh mục</label>
+                    <select id="m_cat" class="form-control">
+                        <option value="Món chính" ${item?.category === 'Món chính' ? 'selected' : ''}>Món chính</option>
+                        <option value="Đồ uống" ${item?.category === 'Đồ uống' ? 'selected' : ''}>Đồ uống</option>
+                        <option value="Tráng miệng" ${item?.category === 'Tráng miệng' ? 'selected' : ''}>Tráng miệng</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="flex: 1; min-width: 250px;">
+                <div class="form-group">
+                    <label>Hình ảnh món ăn</label>
+                    <div style="margin-bottom: 10px; text-align: center; background: #f9f9f9; padding: 10px; border-radius: 8px;">
+                        <img id="preview_img" src="${currentImageSrc}" style="width: 100%; max-height: 200px; object-fit: contain;">
+                    </div>
+                    <input type="file" id="m_image_file" accept="image/*" onchange="document.getElementById('preview_img').src = window.URL.createObjectURL(this.files[0])">
+                </div>
+                <div class="form-group">
+                    <label>Mô tả chi tiết</label>
+                    <textarea id="m_desc" rows="5" style="width:100%; padding: 10px;" placeholder="Nhập mô tả món ăn...">${item ? (item.description || '') : ''}</textarea>
+                </div>
+            </div>
         </div>
-        <div class="form-group">
-            <label>Giá bán</label>
-            <input type="number" id="m_price" value="${item ? item.price : ''}">
-        </div>
-        <div class="form-group">
-            <lable>Có sẵn</lable>
-            <select id="m_available">
-                <option value="true" ${item?.is_available ? 'selected' : ''}>Còn hàng</option>
-                <option value="false" ${!item?.is_available ? 'selected' : ''}>Hết hàng</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Sản phẩm bán chạy</label>
-            <select id="m_bestseller">
-                <option value="true" ${item?.best_seller ? 'selected' : ''}>Có</option>
-                <option value="false" ${!item?.best_seller ? 'selected' : ''}>Không</option>
-        </div>
-        <div class="form-group">
-            <label>Số lượng hàng tồn kho</label>
-            <input type="number" id="m_stock" value="${item ? item.stock_count : ''}">
-        </div>
-        <div class="form-group">
-            <label>Danh mục</label>
-            <select id="m_cat">
-                <option value="Main Course" ${item?.category === 'Main Course' ? 'selected' : ''}>Món chính</option>
-                <option value="Drink" ${item?.category === 'Drink' ? 'selected' : ''}>Đồ uống</option>
-                <option value="Side Dish" ${item?.category === 'Side Dish' ? 'selected' : ''}>Tráng miệng</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Mô tả món</label>
-            <textarea id="m_desc" rows="3">${item ? item.description : ''}</textarea>
     `;
 
     showUniversalModal(title, bodyHtml, async () => {
-        const payload = {
-            food_name: document.getElementById("m_name").value,
-            price: document.getElementById("m_price").value,
-            category: document.getElementById("m_cat").value
-        };
+        const saveBtn = document.querySelector("#universalModal .btn-green");
+        const originalText = saveBtn.innerText;
+        saveBtn.innerText = "Đang lưu...";
+        saveBtn.disabled = true;
 
-        if (item) {
-            await supabaseClient.from('menus').update(payload).eq('id', item.id);
-        } else {
-            await supabaseClient.from('menus').insert([payload]);
+        try {
+            const name = document.getElementById("m_name").value;
+            const price = document.getElementById("m_price").value;
+            const category = document.getElementById("m_cat").value;
+            const stock = document.getElementById("m_stock").value;
+            const available = document.getElementById("m_available").value === "true";
+            const description = document.getElementById("m_desc").value;
+            
+            // Xử lý upload ảnh
+            const fileInput = document.getElementById("m_image_file");
+            let imageUrl = item ? item.image : null; // Giữ link ảnh cũ mặc định
+
+            if (fileInput.files.length > 0) {
+                // Gọi hàm uploadImage đã có sẵn ở cuối file
+                const newUrl = await uploadImage(fileInput.files[0]);
+                if (newUrl) imageUrl = newUrl;
+            }
+
+            const payload = {
+                food_name: name,
+                price: parseInt(price),
+                category: category,
+                stock_count: parseInt(stock),
+                is_available: available,
+                description: description, // Lưu mô tả văn bản
+                image: imageUrl
+            };
+
+            let error;
+            if (item) {
+                // Update
+                const res = await supabaseClient.from('menus').update(payload).eq('id', item.id);
+                error = res.error;
+            } else {
+                // Insert
+                const res = await supabaseClient.from('menus').insert([payload]);
+                error = res.error;
+            }
+
+            if (error) throw error;
+
+            alert("Lưu thành công!");
+            window.closeUniversalModal();
+            renderMenu();
+
+        } catch (err) {
+            console.error(err);
+            alert("Lỗi: " + err.message);
+        } finally {
+            saveBtn.innerText = originalText;
+            saveBtn.disabled = false;
         }
-        renderMenu();
     });
 }
 
@@ -324,52 +382,113 @@ window.editFood = function(id) {
     console.log("Đang click sửa ID:", id);
     console.log("Danh sách hiện tại:", allFoods);
     const item = allFoods.find(f => f.id == id);
-    
     if (!item) {
         alert("Lỗi: Không tìm thấy dữ liệu món ăn.");
         return;
     }
-
+    // Gọi lại Modal đầy đủ chức năng
     openMenuModal(item);
 
-    const bodyHtml = `
-        <div class="form-group" style="margin-bottom: 15px;">
-            <label>Tên món</label>
-            <input type="text" id="edit_m_name" value="${item.food_name}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+    const modalBody = `
+        <div class="form-group">
+            <label>Tên món:</label>
+            <input type="text" id="editName" value="${item.name}" class="form-control">
         </div>
-        <div class="form-group" style="margin-bottom: 15px;">
-            <label>Giá bán (VNĐ)</label>
-            <input type="number" id="edit_m_price" value="${item.price}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+        <div class="form-group">
+            <label>Giá (VNĐ):</label>
+            <input type="number" id="editPrice" value="${item.price}" class="form-control">
         </div>
-        <div class="form-group" style="margin-bottom: 15px;">
-            <label>Danh mục</label>
-            <select id="edit_m_cat" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+        <div class="form-group">
+            <label>Danh mục:</label>
+            <select id="editCategory" class="form-control">
+                <option value="Khai vị" ${item.category === 'Khai vị' ? 'selected' : ''}>Khai vị</option>
                 <option value="Món chính" ${item.category === 'Món chính' ? 'selected' : ''}>Món chính</option>
-                <option value="Đồ uống" ${item.category === 'Đồ uống' ? 'selected' : ''}>Đồ uống</option>
                 <option value="Tráng miệng" ${item.category === 'Tráng miệng' ? 'selected' : ''}>Tráng miệng</option>
+                <option value="Đồ uống" ${item.category === 'Đồ uống' ? 'selected' : ''}>Đồ uống</option>
             </select>
+        </div>
+        
+        <div class="form-group">
+            <label>Mô tả:</label>
+            <textarea id="editDescription" class="form-control" rows="3">${item.description || ''}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Hình ảnh:</label>
+            <div style="margin-bottom: 10px;">
+                <img src="${item.image || 'https://via.placeholder.com/100'}" 
+                     id="currentImagePreview" 
+                     style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd;">
+            </div>
+            <input type="file" id="editImageFile" accept="image/*">
+            <small style="color: #666; display: block; margin-top: 5px;">Để trống nếu không muốn thay đổi ảnh.</small>
         </div>
     `;
 
-    window.showUniversalModal("Chỉnh sửa món ăn", bodyHtml, async () => {
-        const updatedData = {
-            food_name: document.getElementById("edit_m_name").value,
-            price: parseInt(document.getElementById("edit_m_price").value),
-            category: document.getElementById("edit_m_cat").value
-        };
+    // 2. Định nghĩa hàm Lưu 
+    const saveCallback = async () => {
+        const newName = document.getElementById("editName").value;
+        const newPrice = document.getElementById("editPrice").value;
+        const newCategory = document.getElementById("editCategory").value;
+        
+        // Lấy giá trị Mô tả mới
+        const newDescription = document.getElementById("editDescription").value;
+        
+        // Lấy file ảnh mới (nếu có)
+        const newImageFile = document.getElementById("editImageFile").files[0];
 
+        // Biến lưu đường dẫn ảnh (mặc định là ảnh cũ)
+        let newImageUrl = item.image_url;
+
+        // --- Logic Upload Ảnh Mới ---
+        if (newImageFile) {
+            try {
+                const fileName = `menu/${Date.now()}_${newImageFile.name.replace(/\s/g, '_')}`;
+                
+                const { data, error: uploadError } = await supabaseClient.storage
+                    .from('menu_images') 
+                    .upload(fileName, newImageFile);
+
+                if (uploadError) throw uploadError;
+
+                // Lấy Public URL của ảnh vừa up
+                const { data: urlData } = supabaseClient.storage
+                    .from('menu_images')
+                    .getPublicUrl(fileName);
+                
+                newImageUrl = urlData.publicUrl;
+
+            } catch (err) {
+                console.error("Lỗi upload ảnh:", err);
+                alert("Không thể tải ảnh lên: " + err.message);
+                return; // Dừng lại nếu upload lỗi
+            }
+        }
+        // -----------------------------
+
+        // Gửi lệnh Update lên Database
         const { error } = await supabaseClient
             .from('menus')
-            .update(updatedData)
-            .eq('id', id);
+            .update({
+                name: newName,
+                price: newPrice,
+                category: newCategory,
+                description: newDescription, // Cập nhật mô tả
+                image_url: newImageUrl       // Cập nhật link ảnh
+            })
+            .eq('id', item.id);
 
         if (error) {
-            alert("Lỗi khi lưu: " + error.message);
-        } else {
-            alert("Cập nhật thành công!");
-            renderMenu();
+            throw new Error(error.message);
         }
-    });
+
+        // Tải lại danh sách món và đóng modal
+        alert("Cập nhật món thành công!");
+        window.closeUniversalModal();
+        renderMenu(); // Hoặc hàm render lại trang menu của bạn
+    };
+
+    window.openUniversalModal("Chỉnh sửa món ăn", modalBody, saveCallback);
 };
 
 window.filterMenu = function() {
@@ -383,6 +502,28 @@ window.filterMenu = function() {
     });
 
     renderTableBody(filtered);
+}
+async function uploadImage(file) {
+    try {
+        const fileName = `dish_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
+        const { data, error } = await supabaseClient
+            .storage
+            .from('menu_images')
+            .upload(fileName, file);
+
+        if (error) throw error;
+
+        const { data: urlData } = supabaseClient
+            .storage
+            .from('menu_images')
+            .getPublicUrl(fileName);
+
+        return urlData.publicUrl;
+    } catch (err) {
+        console.error("Upload lỗi:", err);
+        alert("Lỗi upload ảnh: " + err.message);
+        return null;
+    }
 }
 
 // Chỗ ngồi
@@ -1401,7 +1542,7 @@ window.renderCustomerChart = function(bookings) {
     gradient.addColorStop(1, 'rgba(235, 63, 98, 0.0)');
 
     customerChartInstance = new Chart(ctx, {
-        type: 'line', // Đổi sang Line chart nhìn mượt mà hơn cho xu hướng
+        type: 'line',
         data: {
             labels: labels,
             datasets: [{
@@ -1443,16 +1584,13 @@ window.renderCustomerChart = function(bookings) {
     });
 };
 
-// Hàm Xuất Excel (Bao gồm dữ liệu biểu đồ)
 window.exportDailyCustomerExcel = function() {
     const selectedDate = document.getElementById("customerDateFilter").value;
     
-    // Lấy lại dữ liệu đã lọc (làm lại logic lọc giống updateCustomerStats)
     const dailyBookings = allReservations.filter(res => res.booking_time && res.booking_time.startsWith(selectedDate));
 
     if (dailyBookings.length === 0) return alert("Không có dữ liệu để xuất!");
 
-    // --- Sheet 1: Chi tiết khách hàng ---
     const detailData = dailyBookings.map(b => {
         const table = allTables.find(t => t.id == b.table_id);
         return {
@@ -1465,10 +1603,6 @@ window.exportDailyCustomerExcel = function() {
             "Ngày Tạo Đơn": new Date(b.created_at).toLocaleString('vi-VN')
         };
     });
-
-    // --- Sheet 2: Dữ liệu Biểu đồ (Thống kê theo giờ) ---
-    // Excel không hỗ trợ xuất trực tiếp hình ảnh Chart từ JS client-side đơn giản,
-    // nên ta xuất Dữ liệu Thống kê để người dùng có thể tự vẽ chart trong Excel dễ dàng.
     const hoursCount = {};
     dailyBookings.forEach(b => {
         const h = new Date(b.booking_time).getHours();
@@ -1508,7 +1642,7 @@ window.renderStaffPage = async function() {
     `;
 
     try {
-        // 2. Tải dữ liệu song song (Staffs + Schedules)
+        // 2. Tải dữ liệu song song 
         const promises = [];
         
         // Luôn tải lại để đảm bảo dữ liệu mới nhất
@@ -1517,7 +1651,7 @@ window.renderStaffPage = async function() {
         
         await Promise.all(promises);
 
-        // 3. Render Khung Trang (Tabs)
+        // 3. Render Khung Trang
         const html = `
             <div class="page-header">
                 <div class="staff-tabs">
@@ -1546,22 +1680,19 @@ window.renderStaffPage = async function() {
     }
 };
 
-// Hàm chuyển đổi Tab (Fix lỗi click không ăn)
+// Hàm chuyển đổi Tab 
 window.switchStaffTab = function(tabName) {
     currentStaffTab = tabName;
     
     // Update UI active class
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    // Tìm button vừa click để add class active (dùng event.currentTarget an toàn hơn)
+    // Tìm button vừa click để add class active 
     event.currentTarget.classList.add('active'); 
 
     if (tabName === 'list') renderStaffListView();
     else renderScheduleView();
 };
 
-// ---------------------------------------------------------
-// TAB 1: DANH SÁCH NHÂN VIÊN (List View)
-// ---------------------------------------------------------
 window.renderStaffListView = function() {
     // Tính KPI
     const totalStaff = staffs.length;
@@ -1659,7 +1790,6 @@ window.filterStaff = function() {
     renderStaffTable(filtered);
 };
 
-// Helper: Tạo màu ngẫu nhiên cố định theo tên
 function stringToColor(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
@@ -1667,9 +1797,6 @@ function stringToColor(str) {
     return '#' + "00000".substring(0, 6 - c.length) + c;
 }
 
-// ---------------------------------------------------------
-// TAB 2: XẾP LỊCH (Schedule View)
-// ---------------------------------------------------------
 window.renderScheduleView = function() {
     const days = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"];
     const shifts = [
@@ -1729,9 +1856,6 @@ window.renderScheduleView = function() {
     document.getElementById("staffTabContent").innerHTML = tableHtml;
 };
 
-// ---------------------------------------------------------
-// CÁC HÀM CRUD (Thêm, Sửa, Xóa)
-// ---------------------------------------------------------
 
 // 1. Thêm Nhân Viên
 window.openAddStaffModal = function() {
@@ -1795,7 +1919,7 @@ window.openAddStaffModal = function() {
     });
 };
 
-// 2. Sửa Nhân Viên (Đã fix lỗi mất chức năng)
+// 2. Sửa Nhân Viên
 window.editStaff = function(id) {
     const s = staffs.find(x => x.id == id);
     if (!s) return;
@@ -1855,7 +1979,7 @@ window.deleteStaff = async function(id) {
     }
 };
 
-// 4. Thêm Lịch (Schedule)
+// 4. Thêm Lịch 
 window.openAddScheduleModal = function(day, shiftId) {
     const options = staffs.map(s => `<option value="${s.id}" data-name="${s.name}">${s.name} (${s.role})</option>`).join('');
 
@@ -1912,11 +2036,10 @@ window.showUniversalModal = function(title, bodyHtml, saveCallback) {
     const modal = document.getElementById("universalModal");
     if(!modal) return console.error("Không tìm thấy modal!");
 
-    // Cập nhật tiêu đề và nội dung
     document.getElementById("modalTitle").innerText = title;
     document.getElementById("modalBody").innerHTML = bodyHtml;
     
-    // Xử lý nút Lưu (Xóa sự kiện cũ để tránh bị click đúp)
+    // Xử lý nút Lưu 
     const saveBtn = document.getElementById("modalSaveBtn");
     const newBtn = saveBtn.cloneNode(true);
     saveBtn.parentNode.replaceChild(newBtn, saveBtn);
@@ -1943,7 +2066,6 @@ window.showUniversalModal = function(title, bodyHtml, saveCallback) {
     modal.style.display = "flex";
 };
 
-// Đóng modal khi click ra ngoài
 window.onclick = function(event) {
     const modal = document.getElementById("universalModal");
     if (event.target == modal) {

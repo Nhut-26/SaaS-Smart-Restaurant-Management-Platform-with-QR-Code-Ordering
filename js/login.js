@@ -42,21 +42,44 @@ if (formRegister) {
 
     showMessage("Đang xử lý đăng ký...", "success");
 
-    const { error } = await supaClient.auth.signUp({
-      email,
-      password,
+    // 1. Đăng ký tài khoản vào hệ thống xác thực Supabase (Auth)
+    // Bước này cần thiết để tạo User ID và sau này dùng để Đăng nhập
+    const { data: authData, error: authError } = await supaClient.auth.signUp({
+      email: email,
+      password: password,
       options: {
+        // Vẫn lưu metadata để tiện hiển thị nếu cần
         data: { full_name: name }
       }
     });
 
-    if (error) {
-      showMessage(error.message, "error");
+    if (authError) {
+      showMessage(authError.message, "error");
       return;
     }
 
-    showMessage("Đăng ký thành công! Hãy kiểm tra email.", "success");
-    formRegister.reset();
+    // 2. Nếu đăng ký Auth thành công, ghi dữ liệu vào bảng 'tenants'
+    if (authData.user) {
+        const { error: dbError } = await supaClient
+            .from('tenants')
+            .insert([
+                { 
+                    id: authData.user.id, // Lấy ID từ tài khoản vừa tạo
+                    name: name,
+                    email: email,
+                    password: password // Lưu password vào bảng (theo yêu cầu)
+                }
+            ]);
+
+        if (dbError) {
+            console.error("Lỗi lưu database:", dbError);
+            showMessage("Đăng ký Auth thành công nhưng lỗi lưu dữ liệu: " + dbError.message, "error");
+            return;
+        }
+
+        showMessage("Đăng ký thành công! Hãy kiểm tra email để xác nhận.", "success");
+        formRegister.reset();
+    }
   });
 }
 

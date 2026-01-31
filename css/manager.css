@@ -715,3 +715,32 @@ button { background-color: var(--manager-primary); }
 .btn-logout:hover {
     background: #c0392b;
 }
+
+.modal-body .form-group {
+    margin-bottom: 15px;
+    text-align: left;
+}
+
+.modal-body label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 5px;
+    color: #333;
+}
+
+.modal-body .form-control {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.modal-body textarea.form-control {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.modal-body input[type="file"] {
+    padding: 5px 0;
+}
