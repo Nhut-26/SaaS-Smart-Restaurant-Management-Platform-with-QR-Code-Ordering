@@ -983,17 +983,50 @@ async function renderFinance() {
     `;
 
     content.innerHTML = toolbarHtml + mainHtml;
-
-    if (!budgets || budgets.length === 0) {
-        budgets = [
-            { id: 1, date: '2023-10-01', type: "Thu", category: "Bán hàng", note: "Doanh thu ca sáng", amount: 2500000 },
-            { id: 2, date: '2023-10-01', type: "Chi", category: "Nguyên liệu", note: "Nhập rau củ", amount: 500000 },
-        ];
+ if (!currentRestaurantId) {
+        console.warn("Chưa có restaurant_id");
+        return;
     }
+
+    const { data, error } = await supabaseClient
+        .from("financial_reports")
+        .select("*")
     
-    currentFinanceData = [...budgets];
-    refreshFinanceUI();
+        .order("transaction_date", { ascending: false });
+
+    if (error) {
+        console.error("Lỗi Supabase:", error);
+        alert("Không tải được báo cáo");
+        return;
+    }
+
+    console.log("FINANCE DATA:", data); // 👈 BẮT BUỘC PHẢI THẤY
+
+    renderFinanceTable(data);
 }
+
+
+
+function renderFinanceTable(data) {
+    const tbody = document.getElementById("financeTableBody");
+    tbody.innerHTML = "";
+
+    data.forEach(item => {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td>${item.transaction_date}</td>
+            <td>${item.type === "income" ? "Doanh thu" : "Chi phí"}</td>
+            <td>${item.description}</td>
+            <td>${item.type === "income" ? "Thu" : "Chi"}</td>
+            <td>${Number(item.amount).toLocaleString("vi-VN")} đ</td>
+        `;
+
+        tbody.appendChild(tr);
+    });
+}
+
+
 
 function refreshFinanceUI() {
     const tableBody = document.getElementById("financeTableBody");
