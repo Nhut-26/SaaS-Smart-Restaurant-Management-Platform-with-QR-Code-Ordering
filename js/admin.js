@@ -5,7 +5,7 @@ const pageTitle = document.getElementById("page-title");
 const SUPABASE_URL = "https://vhjxxgajenkzuykkqloi.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0OTgyMjIsImV4cCI6MjA4MzA3NDIyMn0.l04T4IY-2mdFTvVhksDBmL5buErB1Pfa97GQOgRVtCg";
 
-const supabase = window.supabase.createClient(
+const db = window.supabase.createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY
 );
@@ -16,7 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function checkAuth() {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session } } = await db.auth.getSession();
 
   if (!session) {
    window.location.href = "../login.html";
@@ -32,11 +32,13 @@ async function checkAuth() {
 }
 
 const logoutBtn = document.getElementById("logout-btn");
+if (logoutBtn) {
+  logoutBtn.addEventListener("click", async () => {
+    await db.auth.signOut();
+    window.location.href = "../login.html";
+  });
+}
 
-logoutBtn.addEventListener("click", async () => {
-  await supabase.auth.signOut();
-  window.location.href = "../login.html";
-});
 
 
 // Dữ liệu ảo
@@ -62,11 +64,7 @@ const AI_PLANS_CONFIG = {
     'pro': { model: 'GPT-4 Turbo', tokens: 'Không giới hạn', speed: 'Siêu tốc', support: '1:1' }
 };
 
-// Load
-document.addEventListener("DOMContentLoaded", () => {
-    setupNavigation();
-    renderSystemDashboard();
-});
+
 
 function setupNavigation() {
     const menuItems = document.querySelectorAll(".menu-item");
@@ -114,7 +112,7 @@ async function fetchAndRenderRestaurants() {
     pageTitle.innerText = "Đang tải dữ liệu nhà hàng...";
     
     try {
-        const { data, error } = await _supabase
+        const { data, error } = await db
             .from('restaurants') 
             .select(`
                 *,
@@ -247,7 +245,7 @@ async function processRestaurantAction(id, newStatus) {
     }
 
     try {
-        const { error } = await _supabase
+        const { error } = await db
             .from('restaurants')
             .update({ status: newStatus })
             .eq('id', id);
@@ -291,7 +289,7 @@ async function editRestaurantInfo(id) {
     // Update DB
     try {
         // Update bảng Restaurants (thêm cuisine_type và price_range)
-        await _supabase.from('restaurants').update({ 
+        await db.from('restaurants').update({ 
             name: newName,
             cuisine_type: newCuisine,
             price_range: newPrice
@@ -299,7 +297,7 @@ async function editRestaurantInfo(id) {
 
         // Update bảng Tenants
         if (r.tenant_id) {
-            await _supabase.from('tenants').update({ owner: newOwner, email: newEmail }).eq('id', r.tenant_id);
+            await db.from('tenants').update({ owner: newOwner, email: newEmail }).eq('id', r.tenant_id);
         }
         alert("Đã lưu thông tin!");
     } catch (err) {
@@ -311,7 +309,7 @@ async function editRestaurantInfo(id) {
 async function deleteRestaurant(id) {
     if (!confirm("Bạn có chắc muốn xóa vĩnh viễn?")) return;
     try {
-        const { error } = await _supabase.from('restaurants').delete().eq('id', id);
+        const { error } = await db.from('restaurants').delete().eq('id', id);
         if (error) throw error;
         restaurants = restaurants.filter(r => r.id !== id);
         renderRestaurants();
@@ -338,14 +336,14 @@ async function syncFromGoogleForm() {
             
             if (!exists) {
                 // Tạo Tenant
-                const { data: tenantData, error: tErr } = await _supabase
+                const { data: tenantData, error: tErr } = await db
                     .from('tenants')
                     .insert({ owner: item["Tên chủ sở hữu"] || "Unknown", email: email })
                     .select().single();
 
                 if (!tErr) {
                     // Tạo Restaurant
-                    await _supabase.from('restaurants').insert({
+                    await db.from('restaurants').insert({
                         name: item["Tên nhà hàng"] || "Nhà hàng mới",
                         status: "Pending",
                         tenant_id: tenantData.id,
@@ -378,7 +376,7 @@ function filterRestaurants(keyword) {
 async function fetchAndRenderUsers() {
     pageTitle.innerText = "Đang tải dữ liệu...";
     try {
-        const { data, error } = await _supabase
+        const { data, error } = await db
             .from('tenants')
             .select('*')
             .order('created_at', { ascending: false });
@@ -521,7 +519,7 @@ async function updateUserPackage(id, newPackage) {
 
     // 3. Gửi lên Supabase
     try {
-        const { error } = await _supabase
+        const { error } = await db
             .from('tenants')
             .update({ 
                 package: newPackage,
@@ -543,7 +541,7 @@ async function updatePaymentStatus(id, newStatus) {
         user.status = newStatus;
         renderGlobalUsers();
     }
-    const { error } = await _supabase.from('tenants').update({ status: newStatus }).eq('id', id);
+    const { error } = await db.from('tenants').update({ status: newStatus }).eq('id', id);
     if (error) {
         alert("Lỗi cập nhật trạng thái!");
         fetchAndRenderUsers();
@@ -552,7 +550,7 @@ async function updatePaymentStatus(id, newStatus) {
 
 async function deleteUser(id) {
     if (!confirm("Bạn có chắc muốn xóa vĩnh viễn user này?")) return;
-    const { error } = await _supabase.from('tenants').delete().eq('id', id);
+    const { error } = await db.from('tenants').delete().eq('id', id);
     if (error) alert("Không xóa được!");
     else {
         alert("Đã xóa thành công!");
