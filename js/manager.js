@@ -1,25 +1,62 @@
 const content = document.getElementById("content");
 const pageTitle = document.getElementById("page-title");
-const SUPABASE_URL  = 'https://vhjxxgajenkzuykkqloi.supabase.co';
+const SUPABASE_URL = 'https://vhjxxgajenkzuykkqloi.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzQ5ODIyMiwiZXhwIjoyMDgzMDc0MjIyfQ.c6AfU8do1i4pgxiE-1SCrT6OU6Sgj4aSbhB-Rh981MM';
-const supabaseClient = window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY
-);
+
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+window.currentRestaurantId = null;
+window.currentUserInfo = null;
+
 (async () => {
-    const { data } = await supabaseClient.auth.getSession();
-    if (!data || !data.session) {
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    
+    if (error || !session) {
         window.location.replace("../Login/login.html");
+        return;
     }
+
+    const user = session.user;
+    window.currentUserInfo = user;
+
+    const { data: linkData, error: linkError } = await supabaseClient
+        .from('user_restaurants')
+        .select(`
+            restaurant_id,
+            restaurants (
+                id,
+                name
+            )
+        `)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (linkError || !linkData) {
+        console.error("Lỗi lấy thông tin nhà hàng:", linkError);
+        alert("Không tìm thấy thông tin nhà hàng liên kết! Vui lòng đăng nhập lại.");
+        await supabaseClient.auth.signOut();
+        window.location.replace("../Login/login.html");
+        return;
+    }
+
+    const restaurant = linkData.restaurants;
+    window.currentRestaurantId = restaurant.id;
+
+    const logoText = document.getElementById('app-logo-text');
+    const logoIcon = document.getElementById('app-logo-icon');
+    const ownerNameEl = document.getElementById("owner-name");
+
+    if (logoText) logoText.innerText = restaurant.name;
+    if (logoIcon) logoIcon.innerText = restaurant.name.charAt(0).toUpperCase();
+    
+    if (ownerNameEl) {
+        ownerNameEl.textContent = user.user_metadata.full_name || user.email;
+    }
+
+    console.log(`Đã tải hệ thống cho nhà hàng: ${restaurant.name} (ID: ${window.currentRestaurantId})`);
+    renderMenu();
+
 })();
-
-const currentUser = JSON.parse(localStorage.getItem("currentUser"));
-if (!currentUser) {
-    window.location.href = "../Login/login.html";
-}
-const ownerNameEl = document.getElementById("owner-name");
-ownerNameEl.textContent = currentUser.ownerName || currentUser.email;
-
 let allFoods = [];
 
 let allTables = [];
@@ -49,23 +86,10 @@ const TIME_SLOTS = [
     { id: '20-24', label: '20:00 - 24:00' }
 ];
 
-async function fetchRestaurantId() {
-    // Lấy 1 dòng đầu tiên từ bảng 'restaurants' (hoặc bảng chứa thông tin nhà hàng của bạn)
-    const { data, error } = await supabaseClient.from('restaurants').select('id').limit(1).single();
-    
-    if (data) {
-        currentRestaurantId = data.id;
-        console.log("Đã lấy ID nhà hàng:", currentRestaurantId);
-    } else {
-        console.error("Không tìm thấy thông tin nhà hàng:", error);
-    }
-}
 
 // tự động khởi chạy
 document.addEventListener("DOMContentLoaded", () => {
     setupNavigation();
-    fetchRestaurantId();
-    renderMenu(); // mặc định vào trang Menu
 });
 
 function setupNavigation() {
@@ -91,7 +115,11 @@ async function renderMenu() {
     content.innerHTML = `<div class="loading">Đang tải dữ liệu từ Database...</div>`;
 
     try {
-        const { data, error } = await supabaseClient.from('menus').select('*').order('id', { ascending: true });
+        const { data, error } = await supabaseClient
+            .from('menus')
+            .select('*')
+            .order('id', { ascending: true })
+            .eq('restaurant_id', window.currentRestaurantId);
         if (error) throw error;
         allFoods = data;
 
@@ -178,7 +206,7 @@ async function openAddMenuForm() {
                 description: description,
                 stock_quantity: parseInt(stock_quantity),
                 category: category,
-                description: description
+                description: description,
             }]);
 
         if (error) {
@@ -256,7 +284,7 @@ window.openAddMenuForm = function(item = null) {
         const price = document.getElementById("fPrice").value;
         
         if (item) {
-            await supabaseClient.from('menus').update({ food_name: name, price: price }).eq('id', item.id);
+            await supabaseClient.from('menus').update({ food_name: name, price: price }).eq('id', item.restaurant_id);
         } else {
             await supabaseClient.from('menus').insert([{ food_name: name, price: price }]);
         }
@@ -348,7 +376,8 @@ window.openMenuModal = function(item = null) {
                 stock_count: parseInt(stock),
                 is_available: available,
                 description: description, // Lưu mô tả văn bản
-                image: imageUrl
+                image: imageUrl,
+                restaurant_id: window.currentRestaurantId
             };
 
             let error;
@@ -531,13 +560,15 @@ async function fetchTableData() {
     const { data: tables, error: tError } = await supabaseClient
         .from('tables')
         .select('*')
-        .order('table_name');
+        .order('table_name')
+        .eq('restaurant_id', window.currentRestaurantId);
     if (tError) { console.error(tError); return; }
     allTables = tables;
 
     const { data: bookings, error: bError } = await supabaseClient
         .from('bookings')
-        .select('*');
+        .select('*')
+        .eq('restaurant_id', window.currentRestaurantId);
     if (bError) { console.error(bError); return; }
     allReservations = bookings;
 
@@ -774,7 +805,12 @@ window.openAddTableModal = function() {
     showUniversalModal("Thêm bàn mới", bodyHtml, async () => {
         const name = document.getElementById("new_t_name").value;
         const seats = document.getElementById("new_t_seats").value;
-        await supabaseClient.from('tables').insert([{ table_name: name, capacity: seats, status: 'available' }]);
+        await supabaseClient.from('tables').insert([{ 
+            table_name: name, 
+            capacity: seats, 
+            status: 'available',
+            restaurant_id: window.currentRestaurantId 
+        }]);
         renderTableReservation();
     });
 }
@@ -928,7 +964,7 @@ window.addNewTable = function() {
 
         try {
             const { error } = await supabaseClient.from('tables').insert([
-                { table_name: name, capacity: parseInt(capacity), status: 'available' }
+                { table_name: name, capacity: parseInt(capacity), status: 'available', restaurant_id: window.currentRestaurantId }
             ]);
             
             if (error) throw error;
@@ -952,18 +988,6 @@ window.deleteTable = async function(id) {
         alert("Không thể xóa bàn (có thể do đang có đơn đặt hoặc lỗi hệ thống).");
         console.error(err);
     }
-};
-
-window.downloadTableTemplate = function() {
-    const data = [
-        { "TenBan": "Bàn 01", "SoGhe": 4 },
-        { "TenBan": "Bàn 02", "SoGhe": 4 },
-        { "TenBan": "VIP 01", "SoGhe": 10 }
-    ];
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "DanhSachBan");
-    XLSX.writeFile(wb, "Mau_Danh_Sach_Ban.xlsx");
 };
 
 window.handleExcelUpload = function(input) {
@@ -1032,7 +1056,8 @@ window.processImport = async function(mode) {
         const formattedData = data.map(item => ({
             table_name: item['TenBan'] || item['name'], 
             capacity: item['SoGhe'] || item['capacity'] || 4,
-            status: 'available'
+            status: 'available',
+            restaurant_id: window.currentRestaurantId
         })).filter(item => item.table_name);
 
         if (mode === 'replace') {
@@ -1042,7 +1067,8 @@ window.processImport = async function(mode) {
                 .from('bookings')
                 .update({ 
                     table_id: null,
-                    status: 'pending'
+                    status: 'pending',
+                    restaurant_id: window.currentRestaurantId
                 })
                 .not('table_id', 'is', null);
 
@@ -1132,8 +1158,8 @@ async function renderFinance() {
     const { data, error } = await supabaseClient
         .from("financial_reports")
         .select("*")
-    
-        .order("transaction_date", { ascending: false });
+        .order("transaction_date", { ascending: false })
+        .eq('restaurant_id', window.currentRestaurantId);
 
     if (error) {
         console.error("Lỗi Supabase:", error);
@@ -1141,7 +1167,7 @@ async function renderFinance() {
         return;
     }
 
-    console.log("FINANCE DATA:", data); // 👈 BẮT BUỘC PHẢI THẤY
+    console.log("FINANCE DATA:", data);
 
     renderFinanceTable(data);
 }
@@ -1237,44 +1263,6 @@ function refreshFinanceUI() {
     countLabel.innerText = `Hiển thị ${currentFinanceData.length} giao dịch`;
 }
 
-window.generateDummyFinanceData = function() {
-    const count = 50; // Tạo 50 dòng dữ liệu
-    const categoriesThu = ["Bán hàng", "Phí dịch vụ", "Tiền tip"];
-    const categoriesChi = ["Nhập hàng", "Điện nước", "Lương nhân viên", "Sửa chữa", "Marketing"];
-    
-    const newData = [];
-    
-    for (let i = 0; i < count; i++) {
-        const isThu = Math.random() > 0.4; // 60% là Thu
-        const type = isThu ? "Thu" : "Chi";
-        const catList = isThu ? categoriesThu : categoriesChi;
-        const category = catList[Math.floor(Math.random() * catList.length)];
-        
-        // Random ngày trong 30 ngày qua
-        const date = new Date();
-        date.setDate(date.getDate() - Math.floor(Math.random() * 30));
-        const dateStr = date.toISOString().split('T')[0];
-
-        // Random tiền (từ 100k đến 5tr)
-        const amount = (Math.floor(Math.random() * 50) + 1) * 100000;
-
-        newData.push({
-            id: Date.now() + i,
-            date: dateStr,
-            type: type,
-            category: category,
-            note: `Giao dịch tự động #${i + 1}`,
-            amount: amount
-        });
-    }
-
-    // Gộp vào dữ liệu hiện tại (để test)
-    currentFinanceData = newData; 
-    budgets = newData; // Lưu vào biến toàn cục giả lập
-    
-    alert(`Đã tạo thành công ${count} dòng dữ liệu mẫu!`);
-    refreshFinanceUI();
-};
 
 window.downloadFinanceTemplate = function() {
     const data = [
@@ -1363,16 +1351,15 @@ window.renderCustomerPage = async function() {
         // Tải dữ liệu song song nếu chưa có
         const promises = [];
         if (!allTables || allTables.length === 0) {
-            promises.push(supabaseClient.from('tables').select('*').then(({ data }) => allTables = data || []));
+            promises.push(supabaseClient.from('tables').select('*').eq('restaurant_id', window.currentRestaurantId).then(({ data }) => allTables = data || []));
         }
         if (!allReservations || allReservations.length === 0) {
-            promises.push(supabaseClient.from('bookings').select('*').then(({ data }) => allReservations = data || []));
+            promises.push(supabaseClient.from('bookings').select('*').eq('restaurant_id', window.currentRestaurantId).then(({ data }) => allReservations = data || []));
         }
         if (promises.length > 0) await Promise.all(promises);
 
         const today = new Date().toISOString().split('T')[0];
 
-        // HTML Structure Mới - Chuyên nghiệp hơn
         const html = `
             <div class="control-panel">
                 <div class="control-group">
@@ -1389,7 +1376,7 @@ window.renderCustomerPage = async function() {
                 <div class="kpi-card">
                     <div class="kpi-icon bg-light-red"><i class="fas fa-users"></i></div>
                     <div class="kpi-info">
-                        <h4>Tổng Khách Dự Kiến</h4>
+                        <h4>Tổng khách hôm nay</h4>
                         <div class="kpi-value" id="kpiTotalGuests">0</div>
                     </div>
                 </div>
@@ -1646,8 +1633,8 @@ window.renderStaffPage = async function() {
         const promises = [];
         
         // Luôn tải lại để đảm bảo dữ liệu mới nhất
-        promises.push(supabaseClient.from('staffs').select('*').order('id', { ascending: true }).then(({ data }) => staffs = data || []));
-        promises.push(supabaseClient.from('scheduling').select('*').then(({ data }) => scheduling = data || []));
+        promises.push(supabaseClient.from('staffs').select('*').order('id', { ascending: true }).eq('restaurant_id', window.currentRestaurantId).then(({ data }) => staffs = data || []));
+        promises.push(supabaseClient.from('scheduling').select('*').eq('restaurant_id', window.currentRestaurantId).then(({ data }) => scheduling = data || []));
         
         await Promise.all(promises);
 
@@ -1698,20 +1685,30 @@ window.renderStaffListView = function() {
     const totalStaff = staffs.length;
     const totalChefs = staffs.filter(s => (s.role || '').toLowerCase().includes('bếp')).length;
     const totalWaiters = staffs.filter(s => (s.role || '').toLowerCase().includes('phục vụ')).length;
+    const totalCashiers = staffs.filter(s => (s.role || '').toLowerCase().includes('thu ngân')).length;
+    const totalManagers = staffs.filter(s => (s.role || '').toLowerCase().includes('quản lý')).length;
 
     const html = `
         <div class="kpi-grid">
             <div class="kpi-card">
-                <div class="kpi-icon bg-light-red"><i class="fas fa-user-tie"></i></div>
+                <div class="kpi-icon bg-light-gray"><i class="fas fa-user-tie"></i></div>
                 <div class="kpi-info"><h4>Tổng Nhân Sự</h4><div class="kpi-value">${totalStaff}</div></div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-icon bg-light-blue"><i class="fas fa-utensils"></i></div>
+                <div class="kpi-icon bg-light-green"><i class="fas fa-user-cog"></i></div>
+                <div class="kpi-info"><h4>Quản lý</h4><div class="kpi-value">${totalManagers}</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon bg-light-green"><i class="fas fa-utensils"></i></div>
                 <div class="kpi-info"><h4>Bếp</h4><div class="kpi-value">${totalChefs}</div></div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-icon bg-light-green"><i class="fas fa-concierge-bell"></i></div>
                 <div class="kpi-info"><h4>Phục Vụ</h4><div class="kpi-value">${totalWaiters}</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon bg-light-green"><i class="fas fa-cash-register"></i></div>
+                <div class="kpi-info"><h4>Thu ngân</h4><div class="kpi-value">${totalCashiers}</div></div>
             </div>
         </div>
 
@@ -1822,8 +1819,6 @@ window.renderScheduleView = function() {
             <td style="font-weight:bold; text-align:center; background:#fcfcfc;">${shiftObj.label}</td>`;
             
         days.forEach(day => {
-            // Lọc nhân viên trong ô này
-            // Logic: day_of_week trong DB là "Thứ 2", shift_type là "Sang" hoặc "Chieu"
             const staffInSlot = schedules.filter(s => s.day_of_week === day && s.shift_type === shiftObj.id);
 
             let content = "";
@@ -1903,7 +1898,7 @@ window.openAddStaffModal = function() {
         // Gửi lên Supabase
         const { data, error } = await supabaseClient
             .from('staffs')
-            .insert([{ name: name, role: role, shift: shift, phone: phone }])
+            .insert([{ name: name, role: role, shift: shift, phone: phone, restaurant_id: window.currentRestaurantId }])
             .select();
 
         if (error) {
@@ -1950,7 +1945,7 @@ window.editStaff = function(id) {
         const shift = document.getElementById("editStaffShift").value;
         const phone = document.getElementById("editStaffPhone").value;
 
-        const { error } = await supabaseClient.from('staffs').update({ name, role, shift, phone }).eq('id', id);
+        const { error } = await supabaseClient.from('staffs').update({ name, role, shift, phone }).eq('id', id).eq('restaurant_id', window.currentRestaurantId);
         if (error) alert("Lỗi update: " + error.message);
         else {
             // Update local array
@@ -1969,9 +1964,9 @@ window.deleteStaff = async function(id) {
     if(!confirm("Bạn có chắc muốn xóa nhân viên này?")) return;
     
     // Xóa cả lịch làm việc của nhân viên đó trước (để sạch data)
-    await supabaseClient.from('scheduling').delete().eq('staff_id', id);
+    await supabaseClient.from('scheduling').delete().eq('staff_id', id).eq('restaurant_id', window.currentRestaurantId);
 
-    const { error } = await supabaseClient.from('staffs').delete().eq('id', id);
+    const { error } = await supabaseClient.from('staffs').delete().eq('id', id).eq('restaurant_id', window.currentRestaurantId);
     if(error) alert("Lỗi xóa: " + error.message);
     else {
         staffs = staffs.filter(s => s.id !== id);
@@ -2005,7 +2000,8 @@ window.openAddScheduleModal = function(day, shiftId) {
             staff_id: staffId,
             staff_name: staffName,
             day_of_week: day,
-            shift_type: shiftId
+            shift_type: shiftId,
+            restaurant_id: window.currentRestaurantId
         }]).select();
 
         if (error) alert("Lỗi: " + error.message);
@@ -2020,7 +2016,7 @@ window.openAddScheduleModal = function(day, shiftId) {
 // 5. Xóa Lịch
 window.deleteSchedule = async function(scheduleId) {
     if (!confirm("Hủy ca làm việc này?")) return;
-    const { error } = await supabaseClient.from('scheduling').delete().eq('id', scheduleId);
+    const { error } = await supabaseClient.from('scheduling').delete().eq('id', scheduleId).eq('restaurant_id', window.currentRestaurantId);
     if (error) alert("Lỗi: " + error.message);
     else {
         schedules = schedules.filter(s => s.id !== scheduleId);
