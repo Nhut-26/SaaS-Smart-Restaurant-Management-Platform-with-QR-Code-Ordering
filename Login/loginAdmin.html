@@ -1,123 +1,29 @@
 <!DOCTYPE html>
 <html lang="vi">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Đăng nhập & Đăng ký</title>
-        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-        <link rel="stylesheet" href="../css/loginAdmin.css">
-    </head>
-    <body>
-        
-        <div class="container" id="container">
-            
-            <div class="form-container sign-up-container">
-                <form id="form-register">
-                    <h1 id="signup-title">Đăng Ký Dịch Vụ</h1>
-                    
-                    <div id="step-0-selection">
-                        <span>Bạn muốn thực hiện thao tác gì?</span>
-                        <button type="button" id="btn-mode-new" class="mode-btn">
-                            <i class="fa-solid fa-user-plus"></i> Tạo tài khoản mới
-                        </button>
-                        <button type="button" id="btn-mode-exist" class="mode-btn ghost-dark">
-                            <i class="fa-solid fa-store"></i> Đã có tài khoản (Thêm chi nhánh)
-                        </button>
-                    </div>
+<head>
+  <meta charset="UTF-8">
+  <title>Đăng nhập Admin</title>
 
-                    <div id="step-1-new" class="hidden">
-                        <div class="social-container">
-                            <a href="#" class="social"><i class="fa-solid fa-utensils"></i></a>
-                        </div>
-                        <span>Bước 1: Thông tin người quản lý mới</span>
-                        <input type="text" id="reg-name" placeholder="Họ và Tên" />
-                        <input type="email" id="reg-email" placeholder="Email" />
-                        <input type="tel" id="reg-phone" placeholder="Số điện thoại" />
-                        <input type="password" id="reg-pass" placeholder="Mật khẩu" />
-                        
-                        <div class="button-group">
-                            <button type="button" class="btn-back-to-select ghost-dark">Quay lại</button>
-                            <button type="button" id="btn-next-step-new">Tiếp tục <i class="fa-solid fa-arrow-right"></i></button>
-                        </div>
-                    </div>
+  <!-- CSS -->
+  <link rel="stylesheet" href="../css/loginAdmin.css">
 
-                    <div id="step-1-exist" class="hidden">
-                        <div class="social-container">
-                            <a href="#" class="social"><i class="fa-solid fa-user-check"></i></a>
-                        </div>
-                        <span>Bước 1: Xác thực tài khoản quản lý</span>
-                        <p style="margin: 0 0 15px 0; font-size: 12px; color: #666;">Nhập email và mật khẩu quản lý của bạn để xác nhận quyền thêm nhà hàng.</p>
-                        <input type="email" id="verify-email" placeholder="Email quản lý" />
-                        <input type="password" id="verify-pass" placeholder="Mật khẩu" />
-                        
-                        <div class="button-group">
-                            <button type="button" class="btn-back-to-select ghost-dark">Quay lại</button>
-                            <button type="button" id="btn-verify-user">Xác thực</button>
-                        </div>
-                    </div>
+  <!-- Supabase CDN (BẮT BUỘC) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
 
-                    <div id="step-2-restaurant" class="hidden">
-                        <div class="social-container">
-                            <a href="#" class="social"><i class="fa-solid fa-shop"></i></a>
-                        </div>
-                        <span>Bước 2: Thiết lập chi nhánh nhà hàng</span>
-                        <input type="text" id="rest-name" placeholder="Tên Nhà Hàng / Chi Nhánh" required />
-                        <input type="text" id="rest-address" placeholder="Địa chỉ chi tiết" required />
-                        
-                        <div class="select-wrapper">
-                            <select id="rest-cuisine" required>
-                                <option value="" disabled selected>Chọn loại ẩm thực</option>
-                                <option value="vietnamese">Món Việt</option>
-                                <option value="korean">Món Hàn</option>
-                                <option value="japanese">Món Nhật</option>
-                                <option value="western">Âu Mỹ</option>
-                                <option value="other">Khác</option>
-                            </select>
-                        </div>
+<div class="box">
+  <h2 id="title">Đăng nhập</h2>
 
-                        <div class="button-group">
-                            <button type="button" id="btn-back-step-2" class="ghost-dark">Quay lại</button>
-                            <button type="submit" id="btn-finish-register">Hoàn tất</button>
-                        </div>
-                    </div>
-                </form>
-            </div>
+  <input type="text" id="name" placeholder="Họ tên" style="display:none">
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Mật khẩu">
 
-            <div class="form-container sign-in-container">
-                <form id="form-login">
-                    <h1>Đăng Nhập</h1>
-                    <div class="social-container">
-                        <a href="#" class="social"><i class="fa-solid fa-user-tie"></i></a>
-                    </div>
-                    <span>Chào mừng bạn quay trở lại</span>
-                    
-                    <input type="text" id="login-rest-name" placeholder="Tên Nhà Hàng" required />
-                    <input type="email" id="login-email" placeholder="Email" required />
-                    <input type="password" id="login-pass" placeholder="Mật khẩu" required />
-                    
-                    <a href="#">Quên mật khẩu?</a>
-                    <button type="submit">Đăng Nhập</button>
-                </form>
-            </div>
+  <button id="btn-submit">Đăng nhập</button>
+  <p id="toggle" class="link">Chưa có tài khoản? Đăng ký</p>
+</div>
 
-            <div class="overlay-container">
-                <div class="overlay">
-                    <div class="overlay-panel overlay-left">
-                        <h1>Chào mừng trở lại!</h1>
-                        <p>Để tiếp tục quản lý nhà hàng, vui lòng đăng nhập vào hệ thống.</p>
-                        <button class="ghost" id="signIn">Đăng Nhập</button>
-                    </div>
-                    <div class="overlay-panel overlay-right">
-                        <h1>Xin chào!</h1>
-                        <p>Bạn chưa có hệ thống quản lý? Đăng ký ngay để vận hành nhà hàng chuyên nghiệp.</p>
-                        <button class="ghost" id="signUp">Đăng Ký Ngay</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="toast-message" class="toast hidden"></div>
-        <script src="../js/loginAdmin.js"></script>
-
-    </body>
+<!-- JS (LUÔN ĐỂ CUỐI, KHÔNG MODULE) -->
+<script src="../js/loginAdmin.js" defer></script>
+</body>
 </html>
