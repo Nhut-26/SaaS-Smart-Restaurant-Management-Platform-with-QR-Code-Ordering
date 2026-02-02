@@ -9,6 +9,14 @@ const db = window.supabase.createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY
 );
+(async () => {
+    const { data: { session }, error } = await db.auth.getSession();
+    
+    if (error || !session) {
+        window.location.replace("../Login/loginAdmin.html");
+        return;
+    }
+})();
 document.addEventListener("DOMContentLoaded", () => {
   checkAuth();
   setupNavigation();
@@ -29,14 +37,6 @@ async function checkAuth() {
     adminNameEl.innerText =
       session.user.user_metadata?.full_name || session.user.email;
   }
-}
-
-const logoutBtn = document.getElementById("logout-btn");
-if (logoutBtn) {
-  logoutBtn.addEventListener("click", async () => {
-    await db.auth.signOut();
-    window.location.href = "../login.html";
-  });
 }
 
 
@@ -903,3 +903,29 @@ function updateAIPlan(id, newPlan) {
         console.log(`Đã cấp gói AI [${newPlan}] cho nhà hàng ${tenant.name}`);
     }
 }
+// ================= LOGOUT =================
+document.addEventListener("DOMContentLoaded", () => {
+    const logoutBtn = document.querySelector(".logout-btn");
+
+    if (!logoutBtn) {
+        console.error("❌ Không tìm thấy nút đăng xuất");
+        return;
+    }
+
+    logoutBtn.addEventListener("click", async () => {
+        const { error } = await db.auth.signOut();
+
+        if (error) {
+            console.error("❌ Lỗi đăng xuất:", error);
+            alert("Đăng xuất thất bại");
+            return;
+        }
+
+        // Xoá session local (cho chắc)
+        localStorage.clear();
+        sessionStorage.clear();
+
+        // Quay về trang login
+        window.location.href = "../Login/loginAdmin.html";
+    });
+});

@@ -12,7 +12,7 @@ window.currentUserInfo = null;
     const { data: { session }, error } = await supabaseClient.auth.getSession();
     
     if (error || !session) {
-        window.location.replace("../Login/login.html");
+        window.location.replace("../Login/loginManager.html");
         return;
     }
 
@@ -2442,7 +2442,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             localStorage.clear();
             sessionStorage.clear();
-            window.location.replace("../Login/login.html");
+            window.location.replace("../Login/loginManager.html");
         }
     });
 });
