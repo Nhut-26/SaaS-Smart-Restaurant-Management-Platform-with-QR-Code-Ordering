@@ -13,7 +13,7 @@ const db = window.supabase.createClient(
     const { data: { session }, error } = await db.auth.getSession();
     
     if (error || !session) {
-        window.location.replace("../Login/login.html");
+        window.location.replace("../Login/loginAdmin.html");
         return;
     }
 })();
@@ -926,6 +926,6 @@ document.addEventListener("DOMContentLoaded", () => {
         sessionStorage.clear();
 
         // Quay về trang login
-        window.location.href = "../Login/login.html";
+        window.location.href = "../Login/loginAdmin.html";
     });
 });
