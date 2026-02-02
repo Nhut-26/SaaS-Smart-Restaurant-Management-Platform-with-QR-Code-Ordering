@@ -81,30 +81,262 @@ function setupNavigation() {
         });
     });
 }
+let dashboardTenants = [];
+let dashboardRestaurants = [];
 
 // Thống kê
 function renderSystemDashboard() {
     pageTitle.innerText = "Tổng quan hệ thống";
-    content.innerHTML = `
-        <div class="finance-summary">
-            <div class="summary">
-                <p>Tổng doanh thu SaaS</p>
-                <h3>${systemStats.revenue.toLocaleString()}đ</h3>
-            </div>
-            <div class="summary">
-                <p>Tổng đối tác</p>
-                <h3>${systemStats.tenants}</h3>
-            </div>
-            <div class="summary">
-                <p>Người dùng Active</p>
-                <h3>${systemStats.users}</h3>
-            </div>
+
+    fetchDashboardData().then(() => {
+        const kpi = calculateDashboardKPIs();
+         
+       content.innerHTML = `
+    <div class="finance-summary">
+        <div class="summary">
+            <p>Tổng doanh thu SaaS</p>
+            <h3>${kpi.totalRevenue.toLocaleString()}đ</h3>
         </div>
-        <div style="background:white; padding:20px; border-radius:12px; height:300px; display:flex; align-items:center; justify-content:center; color:#999; border: 2px dashed #ddd;">
-            [Biểu đồ tăng trưởng hệ thống sẽ hiển thị ở đây]
+
+        <div class="summary">
+            <p>Doanh thu tháng này</p>
+            <h3>${kpi.monthlyRevenue.toLocaleString()}đ</h3>
+        </div>
+
+        <div class="summary">
+            <p>Tổng đối tác</p>
+            <h3>${kpi.totalTenants}</h3>
+        </div>
+
+        <div class="summary">
+            <p>User Active</p>
+            <h3>${kpi.activeUsers}</h3>
+        </div>
+
+        <div class="summary">
+            <p>Đối tác ngưng hoạt động</p>
+            <h3>${kpi.inactiveUsers}</h3>
+        </div>
+
+        <div class="summary">
+            <p>Nhà hàng đang online</p>
+            <h3>${kpi.activeRestaurants}</h3>
+        </div>
+
+        <!-- ROW 50 / 50 -->
+        <div class="dashboard-row">
+            <div class="card">
+                <h3>📊 Doanh thu theo tháng</h3>
+                <div class="chart-box">
+                    <canvas id="revenueChart"></canvas>
+                </div>
+            </div>
+
+            ${renderExpiringTenantsTable()}
+        </div>
+    </div>
+`;
+        renderRevenueChart();
+    });
+}
+
+async function fetchDashboardData() {
+    try {
+        // 1️⃣ Lấy tenants
+        const { data: tenants, error: tError } = await db
+            .from("tenants")
+            .select("id, name,  status, package, created_at");
+        if (tError) throw tError;
+
+        // 2️⃣ Lấy restaurants
+        const { data: restaurants, error: rError } = await db
+            .from("restaurants")
+            .select("id, name, status");
+
+        if (rError) throw rError;
+
+        dashboardTenants = tenants || [];
+        dashboardRestaurants = restaurants || [];
+
+        console.log("✅ DASHBOARD TENANTS:", dashboardTenants);
+        console.log("✅ DASHBOARD RESTAURANTS:", dashboardRestaurants);
+
+    } catch (err) {
+        console.error("❌ Lỗi tải dashboard data:", err.message);
+    }
+}
+function calculateDashboardKPIs() {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    let totalRevenue = 0;
+    let monthlyRevenue = 0;
+    let activeUsers = 0;
+    let inactiveUsers = 0;
+
+    dashboardTenants.forEach(t => {
+        const price = PLAN_PRICES[t.package] || 0;
+        const createdAt = new Date(t.created_at);
+
+        // Tổng doanh thu
+        if (t.status === 'paid') {
+            totalRevenue += price;
+            activeUsers++;
+
+            // Doanh thu tháng này
+            if (
+                createdAt.getMonth() === currentMonth &&
+                createdAt.getFullYear() === currentYear
+            ) {
+                monthlyRevenue += price;
+            }
+        } else {
+            inactiveUsers++;
+        }
+    });
+
+    const totalTenants = dashboardTenants.length;
+    const activeRestaurants = dashboardRestaurants.filter(
+        r => r.status === 'Active'
+    ).length;
+
+    return {
+        totalRevenue,
+        monthlyRevenue,
+        totalTenants,
+        activeUsers,
+        inactiveUsers,
+        activeRestaurants
+    };
+}
+function getMonthlyRevenueData() {
+    const monthlyData = {};
+
+    dashboardTenants.forEach(t => {
+        if (t.status !== 'paid') return;
+
+        const date = new Date(t.created_at);
+        const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
+        const price = PLAN_PRICES[t.package] || 0;
+
+        if (!monthlyData[monthKey]) {
+            monthlyData[monthKey] = 0;
+        }
+
+        monthlyData[monthKey] += price;
+    });
+
+    const labels = Object.keys(monthlyData).sort();
+    const values = labels.map(m => monthlyData[m]);
+
+    return { labels, values };
+}
+function renderRevenueChart() {
+    const ctx = document.getElementById("revenueChart");
+    if (!ctx) return;
+
+    const { labels, values } = getMonthlyRevenueData();
+
+    new Chart(ctx, {
+    type: "bar",
+    data: {
+        labels,
+        datasets: [{
+            label: "Doanh thu (VNĐ)",
+            data: values,
+            borderRadius: 6
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false, // 👈 RẤT QUAN TRỌNG
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            y: {
+                ticks: {
+                    callback: v => v.toLocaleString() + "đ"
+                }
+            }
+        }
+    }
+});
+}
+function getExpiringTenants(days = 7) {
+    const now = new Date();
+    const limitDate = new Date();
+    limitDate.setDate(now.getDate() + days);
+
+    return dashboardTenants.filter(t => {
+        if (!t.expired_at) return false;
+        if (t.status !== 'paid') return false;
+
+        const expiredAt = new Date(t.expired_at);
+        return expiredAt >= now && expiredAt <= limitDate;
+    });
+}
+function renderExpiringTenantsTable() {
+    const list = getExpiringTenants(7);
+
+    let rows = "";
+
+    if (list.length === 0) {
+        rows = `
+            <tr>
+                <td colspan="4" style="text-align:center; color:#888;">
+                    Không có đối tác sắp hết hạn 🎉
+                </td>
+            </tr>
+        `;
+    } else {
+        rows = list.slice(0, 5).map(t => `
+            <tr>
+                <td>${t.name}</td>
+                <td>${t.package}</td>
+                <td>${new Date(t.expired_at).toLocaleDateString()}</td>
+                <td>
+                    <span style="
+                        background:#fee2e2;
+                        color:#b91c1c;
+                        padding:4px 8px;
+                        border-radius:8px;
+                        font-size:12px;
+                    ">
+                        Sắp hết hạn
+                    </span>
+                </td>
+            </tr>
+        `).join("");
+    }
+
+    return `
+        <div style="
+            background:#fff;
+            padding:20px;
+            border-radius:12px;
+            margin-top:30px;
+        ">
+            <h3>⚠️ Đối tác sắp hết hạn (7 ngày)</h3>
+
+            <table style="width:100%; margin-top:10px; border-collapse:collapse;">
+                <thead>
+                    <tr style="text-align:left; border-bottom:1px solid #eee;">
+                        <th>Tên</th>
+                        <th>Gói</th>
+                        <th>Hết hạn</th>
+                        <th>Trạng thái</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
         </div>
     `;
 }
+
 
 // Nhà hàng
 
