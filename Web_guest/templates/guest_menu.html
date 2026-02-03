@@ -14,6 +14,22 @@
     .order-meta { font-size: .85rem; color: #6c757d; }
     .table-btn { min-width: 52px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    /* Tạo QR */
+    .qr-box {
+      width: 100%;
+      min-height: 360px;
+      background: #fff;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-img {
+      width: 240px;
+      height: 240px;
+      image-rendering: pixelated;
+    }
   </style>
 </head>
 
@@ -85,7 +101,6 @@
   </nav>
 
   <main class="container my-3">
-    {% set flash = request.session.pop("flash", None) %}
     {% if flash %}
       <div class="alert alert-success">{{ flash }}</div>
     {% endif %}
@@ -196,7 +211,7 @@
                     <div class="border rounded-3 p-2 bg-white">
                       <div class="d-flex justify-content-between">
                         <div>
-                          <div class="fw-semibold">{{ it.name }}</div>
+                          <div class="fw-semibold">{{ it.food_name }}</div>
                           <div class="small-muted">{{ "{:,}".format(it.price) }}₫</div>
                         </div>
                         <div class="text-end">
@@ -391,8 +406,9 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <div class="text-center">
-            <canvas id="qrCanvas" style="max-width: 100%;"></canvas>
+
+          <div class="qr-box">
+            <img id="qrImg" class="qr-img" alt="QR"/>
           </div>
 
           <div class="mt-3">
@@ -423,13 +439,13 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 
   <script>
     (function () {
       const ORDERS_URL = "/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/orders/json";
       const TABLES_URL = "/g/{{ restaurant_id }}/{{ branch_id }}/tables/status/json";
       const SHARE_URL = window.location.origin + "/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}";
+      const QR_URL = "/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/qr.png";
 
       const lastStatus = new Map();
 
@@ -439,15 +455,6 @@
       const btnRefresh = document.getElementById("btn-refresh");
       const autoToggle = document.getElementById("auto-refresh");
 
-      // Bill elements
-      const elBillTotal = document.getElementById("bill-total");
-      const elBillQty = document.getElementById("bill-qty");
-      const elBillLines = document.getElementById("bill-lines");
-      const elBillStatus = document.getElementById("bill-status");
-      const elStickyBill = document.getElementById("sticky-bill-text");
-      const btnBill = document.getElementById("btn-request-bill");
-
-      //  Toast 
       function showToast(msg) {
         const toastEl = document.getElementById("statusToast");
         const bodyEl = document.getElementById("statusToastBody");
@@ -456,17 +463,11 @@
         t.show();
       }
 
-      //  Helpers 
       function fmtTime(iso) {
         if (!iso) return "";
         const d = new Date(iso);
         if (isNaN(d.getTime())) return "";
         return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      }
-
-      function fmtMoney(n) {
-        const x = Number(n || 0);
-        return x.toLocaleString("vi-VN") + "₫";
       }
 
       function escapeHtml(s) {
@@ -530,37 +531,6 @@
         `;
       }
 
-      function billStatusMeta(bill) {
-        if (bill && bill.paid) return { label: "Đã thanh toán", badge: "text-bg-success" };
-        if (bill && bill.requested) return { label: "Đã gọi thanh toán", badge: "text-bg-danger" };
-        if (bill && Number(bill.total || 0) > 0) return { label: "Chưa gọi", badge: "text-bg-secondary" };
-        return { label: "Chưa có món", badge: "text-bg-secondary" };
-      }
-
-      function renderBillLines(lines) {
-        if (!Array.isArray(lines) || lines.length === 0) {
-          return `<div class="text-muted">Chưa có món đã đặt.</div>`;
-        }
-        return `
-          <div class="vstack gap-2">
-            ${lines.map(ln => {
-              const note = ln.note ? `<div class="small-muted">“${escapeHtml(ln.note)}”</div>` : "";
-              return `
-                <div class="d-flex justify-content-between">
-                  <div>
-                    <div class="fw-semibold">${escapeHtml(ln.name)}</div>
-                    ${note}
-                    <div class="small-muted">${fmtMoney(ln.unit_price)} x${ln.qty}</div>
-                  </div>
-                  <div class="fw-semibold">${fmtMoney(ln.subtotal)}</div>
-                </div>
-              `;
-            }).join("")}
-          </div>
-        `;
-      }
-
-      //  Refresh orders, bill 
       async function refreshOrders() {
         try {
           elConn.className = "badge text-bg-secondary";
@@ -571,16 +541,13 @@
 
           const data = await res.json();
           const orders = data.orders || [];
-          const bill = data.bill || {};
 
-          // Orders UI
           if (orders.length === 0) {
             elOrders.innerHTML = `<div class="text-muted">Chưa có đơn nào.</div>`;
           } else {
             elOrders.innerHTML = `<div class="vstack gap-2">${orders.map(renderOrder).join("")}</div>`;
           }
 
-          // Toast: new order, status change
           for (const o of orders) {
             const prev = lastStatus.get(o.id);
             if (!prev) {
@@ -589,37 +556,6 @@
               showToast(`Đơn #${o.id}: ${statusMeta(prev).label} → ${statusMeta(o.status).label}`);
             }
             lastStatus.set(o.id, o.status);
-          }
-
-          // Bill UI
-          const bMeta = billStatusMeta(bill);
-
-          if (elBillStatus) {
-            elBillStatus.className = "badge " + bMeta.badge;
-            elBillStatus.textContent = bMeta.label;
-          }
-
-          if (elBillLines) elBillLines.innerHTML = renderBillLines(bill.lines || []);
-          if (elBillTotal) elBillTotal.textContent = fmtMoney(bill.total || 0);
-          if (elBillQty) elBillQty.textContent = `${bill.qty || 0} món`;
-
-          if (elStickyBill) {
-            elStickyBill.textContent = `${fmtMoney(bill.total || 0)} • ${bill.qty || 0} món`;
-          }
-
-          // nút gọi thanh toán
-          if (btnBill) {
-            const total = Number(bill.total || 0);
-            if (bill.paid) {
-              btnBill.disabled = true;
-              btnBill.textContent = "Đã thanh toán";
-            } else if (bill.requested) {
-              btnBill.disabled = true;
-              btnBill.textContent = "Đã gọi thanh toán";
-            } else {
-              btnBill.textContent = "Gọi thanh toán";
-              btnBill.disabled = total <= 0;
-            }
           }
 
           const nowIso = data.server_time || new Date().toISOString();
@@ -633,7 +569,6 @@
         }
       }
 
-      // Refresh table colors 
       async function refreshTables() {
         try {
           const res = await fetch(TABLES_URL, { headers: { "Accept": "application/json" } });
@@ -648,28 +583,23 @@
               btn.className = "btn btn-sm btn-primary table-btn";
               return;
             }
-
             const st = mp[t] || "empty";
             let cls = "btn-outline-primary";
             if (st === "billing") cls = "btn-danger";
             else if (st === "occupied") cls = "btn-warning";
-
             btn.className = `btn btn-sm ${cls} table-btn`;
           });
         } catch (e) {}
       }
 
-      // Manual refresh
       btnRefresh && btnRefresh.addEventListener("click", async () => {
         await refreshOrders();
         await refreshTables();
       });
 
-      // Initial
       refreshOrders();
       refreshTables();
 
-      // Auto refresh
       setInterval(() => {
         if (autoToggle && autoToggle.checked) {
           refreshOrders();
@@ -677,20 +607,18 @@
         }
       }, 5000);
 
-      //  QR Modal 
+      // Modal QR
       const qrModal = document.getElementById("qrModal");
-      const qrCanvas = document.getElementById("qrCanvas");
+      const qrImg = document.getElementById("qrImg");
       const shareLink = document.getElementById("shareLink");
       const copyBtn = document.getElementById("copyLink");
 
       if (shareLink) shareLink.value = SHARE_URL;
 
-      qrModal && qrModal.addEventListener("show.bs.modal", () => {
+      qrModal && qrModal.addEventListener("shown.bs.modal", () => {
         try {
           if (shareLink) shareLink.value = SHARE_URL;
-          if (window.QRCode && qrCanvas) {
-            QRCode.toCanvas(qrCanvas, SHARE_URL, { width: 220, margin: 1 }, function (error) {});
-          }
+          if (qrImg) qrImg.src = QR_URL + "?v=" + Date.now();
         } catch (e) {}
       });
 
