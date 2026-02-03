@@ -19,27 +19,47 @@ window.currentUserInfo = null;
     const user = session.user;
     window.currentUserInfo = user;
 
-    const { data: linkData, error: linkError } = await supabaseClient
+   const savedInfo = JSON.parse(localStorage.getItem('restaurantInfo'));
+    const targetRestId = savedInfo ? savedInfo.restaurantId : null;
+
+    let query = supabaseClient
         .from('user_restaurants')
         .select(`
             restaurant_id,
             restaurants (
                 id,
-                name
+                name,
+                status
             )
         `)
-        .eq('user_id', user.id)
-        .maybeSingle();
+        .eq('user_id', user.id);
+
+    if (targetRestId) {
+        query = query.eq('restaurant_id', targetRestId);
+    } 
+    else {
+        query = query.limit(1);
+    }
+
+    const { data: linkData, error: linkError } = await query.maybeSingle();
 
     if (linkError || !linkData) {
         console.error("Lỗi lấy thông tin nhà hàng:", linkError);
         alert("Không tìm thấy thông tin nhà hàng liên kết! Vui lòng đăng nhập lại.");
         await supabaseClient.auth.signOut();
-        window.location.replace("../Login/login.html");
+        window.location.replace("../Login/loginManager.html");
         return;
     }
 
     const restaurant = linkData.restaurants;
+
+    if (restaurant.status !== 'Active') {
+        alert("Tài khoản nhà hàng này hiện không khả dụng (Chưa duyệt hoặc bị khóa).");
+        await supabaseClient.auth.signOut();
+        window.location.replace("../Login/loginManager.html");
+        return;
+    }
+
     window.currentRestaurantId = restaurant.id;
 
     const logoText = document.getElementById('app-logo-text');
@@ -772,13 +792,11 @@ window.handleTableClick = function(tableId) {
             <div style="text-align:center; padding: 10px 0;">
                 <div style="font-size: 55px; color: #421f1b; margin-bottom: 20px;"><i class="fas fa-file-invoice-dollar"></i></div>
                 <h2 style="margin-bottom:20px; color:#2c3e50; font-size: 24px;">Thanh toán ${table.table_name || table.name}</h2>
-                
                 <div style="background:#fdf2f2; padding:25px; border-radius:12px; text-align:left; border:1px solid #fab1a0; width: 95%; margin: 0 auto 20px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
                     <p style="font-size:17px; margin-bottom:12px;"><strong><i class="fas fa-user"></i> Khách hàng:</strong> ${guest ? guest.customer_name : "Khách vãng lai"}</p>
                     <p style="font-size:17px; margin-bottom:12px;"><strong><i class="fas fa-users"></i> Số lượng:</strong> ${guest ? guest.people_count : "?"} người</p>
                     <p style="font-size:17px;"><strong><i class="fas fa-clock"></i> Giờ vào:</strong> ${guest ? new Date(guest.booking_time).toLocaleTimeString('vi-VN') : "N/A"}</p>
                 </div>
-                
                 <p style="font-size:16px; color:#636e72; font-style: italic;">Xác nhận khách đã hoàn tất thanh toán và dọn bàn?</p>
             </div>
         `;
@@ -786,9 +804,12 @@ window.handleTableClick = function(tableId) {
         showUniversalModal("Trả bàn", bodyHtml, async () => {
             try {
                 await supabaseClient.from('tables').update({ status: 'available' }).eq('id', tableId);
-                
+
                 if (guest) {
-                    await supabaseClient.from('bookings').update({ status: 'completed' }).eq('id', guest.id);
+                    await supabaseClient.from('bookings').update({ 
+                        status: 'completed',
+                        table_id: null
+                    }).eq('id', guest.id);
                 }
 
                 alert("Đã trả bàn thành công!");
@@ -796,21 +817,6 @@ window.handleTableClick = function(tableId) {
             } catch (err) {
                 alert("Lỗi database: " + err.message);
             }
-        });
-    } else {
-        const bodyHtml = `
-            <div class="form-group" style="padding: 10px;">
-                <label style="display:block; margin-bottom:8px;">Tên bàn</label>
-                <input type="text" id="edit_t_name" value="${table.table_name || table.name}" style="width:100%;">
-                <label style="display:block; margin-top:15px; margin-bottom:8px;">Sức chứa (người)</label>
-                <input type="number" id="edit_t_seats" value="${table.capacity || table.seats}" style="width:100%;">
-            </div>
-        `;
-        showUniversalModal("Cấu hình bàn", bodyHtml, async () => {
-            const name = document.getElementById("edit_t_name").value;
-            const seats = document.getElementById("edit_t_seats").value;
-            await supabaseClient.from('tables').update({ table_name: name, capacity: seats }).eq('id', tableId);
-            await fetchTableData();
         });
     }
 };
@@ -933,7 +939,6 @@ window.assignTableModal = function(reservationId) {
         const selectedTableId = document.getElementById("select_table_id").value;
 
         try {
-            // 1. Cập nhật trạng thái bàn thành 'occupied' (Có người)
             const { error: errTable } = await supabaseClient
                 .from('tables')
                 .update({ status: 'occupied' })
@@ -996,15 +1001,40 @@ window.addNewTable = function() {
 };
 
 window.deleteTable = async function(id) {
-    if (!confirm("Bạn có chắc chắn muốn xóa bàn này không?")) return;
-    
+    // 1. Xác nhận trước khi xóa
+    const confirmDelete = confirm("Bạn có chắc chắn muốn xóa bàn này không? Hệ thống sẽ tự động gỡ bàn này khỏi các lịch đặt chỗ liên quan.");
+    if (!confirmDelete) return;
+
     try {
-        const { error } = await supabaseClient.from('tables').delete().eq('id', id);
-        if (error) throw error;
-        await fetchTableData();
+        const { error: updateError } = await supabaseClient
+            .from('bookings')
+            .update({ table_id: null })
+            .eq('table_id', id);
+
+        if (updateError) {
+            throw new Error("Lỗi khi cập nhật Booking: " + updateError.message);
+        }
+
+        const { error: deleteError } = await supabaseClient
+            .from('tables')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) {
+            throw new Error("Lỗi khi xóa Table: " + deleteError.message);
+        }
+
+        alert("Đã xóa bàn thành công!");
+        
+        if (typeof renderTableReservation === 'function') {
+            await renderTableReservation();
+        } else {
+            window.location.reload();
+        }
+
     } catch (err) {
-        alert("Không thể xóa bàn (có thể do đang có đơn đặt hoặc lỗi hệ thống).");
-        console.error(err);
+        console.error("Delete Table Error:", err);
+        alert("Không thể xóa bàn: " + err.message);
     }
 };
 
@@ -1632,7 +1662,6 @@ window.renderCustomerPage = async function() {
     }
 };
 
-// Hàm xử lý logic chính khi chọn ngày
 window.updateCustomerStats = function() {
     const selectedDate = document.getElementById("customerDateFilter").value;
     
@@ -1702,10 +1731,9 @@ window.updateCustomerStats = function() {
 window.renderCustomerChart = function(bookings) {
     const ctx = document.getElementById('customerChart').getContext('2d');
 
-    // Tạo mảng dữ liệu 14 tiếng (8h - 22h)
     const labels = [];
     const dataValues = [];
-    for (let i = 8; i <= 22; i++) {
+    for (let i = 8; i <= 24; i++) {
         labels.push(`${i}h`);
         let count = 0;
         bookings.forEach(b => {

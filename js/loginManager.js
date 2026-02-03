@@ -190,7 +190,7 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
 
     const { data: restData, error: restError } = await supaClient
         .from('restaurants')
-        .select('name')
+        .select('id, name, status')
         .eq('tenant_id', data.user.id)
         .eq('name', restNameInput) // Kiểm tra chính xác tên nhà hàng nhập vào
         .maybeSingle(); // Dùng maybeSingle để tránh lỗi nếu có nhiều chi nhánh trùng tên (dù hiếm)
@@ -203,13 +203,22 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
         return;
     }
 
+    if (restData.status !== 'Active') {
+        showToast("Hệ thống nhà hàng này chưa được duyệt hoặc đang bị khóa.", "error");
+        await supaClient.auth.signOut();
+        return;
+    }
+
     const userInfo = {
         id: data.user.id,
         email: data.user.email,
         ownerName: data.user.user_metadata.full_name || "Quản lý",
-        restaurantName: restData.name
+        restaurantName: restData.name,
+        restaurantId: restData.id
     };
-    localStorage.setItem("currentUser", JSON.stringify(userInfo));
+
+    localStorage.setItem('restaurantInfo', JSON.stringify(userInfo));
+    
     showToast("Đăng nhập thành công!", "success");
     setTimeout(() => { window.location.href = "../Manager/manager.html"; }, 1000);
 });
