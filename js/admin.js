@@ -1024,6 +1024,6 @@ document.addEventListener("DOMContentLoaded", () => {
         sessionStorage.clear();
 
         // Quay về trang login
-        window.location.href = "../Login/loginAdmin.html";
+        window.location.href = "../Login/index.html";
     });
 });
