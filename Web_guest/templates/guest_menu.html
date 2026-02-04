@@ -15,7 +15,6 @@
     .table-btn { min-width: 52px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 
-    /* Tạo QR */
     .qr-box {
       width: 100%;
       min-height: 360px;
@@ -30,6 +29,8 @@
       height: 240px;
       image-rendering: pixelated;
     }
+
+    .people-btn { min-width: 56px; }
   </style>
 </head>
 
@@ -37,15 +38,27 @@
   <nav class="navbar bg-white border-bottom">
     <div class="container d-flex justify-content-between align-items-center">
 
-    <span class="navbar-brand mb-0 h1">
-      {% if restaurant_name %}
-        {{ restaurant_name }}
-      {% else %}
-        S2O • Scan2Order
-      {% endif %}
-    </span>
+      <span class="navbar-brand mb-0 h1">
+        {% if restaurant_name %}
+          {{ restaurant_name }}
+        {% else %}
+          S2O • Scan2Order
+        {% endif %}
+      </span>
 
       <div class="d-flex align-items-center gap-2">
+        <!-- People count button -->
+        <button class="btn btn-sm btn-outline-success"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#peopleModal">
+          {% if people_count %}
+            {{ people_count }} người
+          {% else %}
+            Chọn số người
+          {% endif %}
+        </button>
+
         <!--QR share -->
         <button class="btn btn-sm btn-outline-primary"
                 type="button"
@@ -253,7 +266,7 @@
           </div>
         </div>
 
-        <!-- Bill (tổng các orders) -->
+        <!-- Bill -->
         {% if bill_paid %}
           {% set bill_badge = "text-bg-success" %}
           {% set bill_label = "Đã thanh toán" %}
@@ -396,6 +409,39 @@
       </div>
     </div>
   </main>
+
+  <!-- People modal -->
+  <div class="modal fade" id="peopleModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Số người • {{ table_id }}</h5>
+        </div>
+        <div class="modal-body">
+          <div class="small-muted mb-2">Vui lòng chọn số người trong bàn để phục vụ tốt hơn.</div>
+
+          <form method="post" action="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/people/set">
+            <input type="hidden" name="people_count" id="people_count_input" value="{{ people_count or 0 }}"/>
+
+            <div class="d-flex flex-wrap gap-2 mb-3" id="peopleButtons">
+              {% for n in range(1, 13) %}
+                <button type="button" class="btn btn-outline-primary people-btn" data-n="{{ n }}">{{ n }}</button>
+              {% endfor %}
+            </div>
+
+            <div class="input-group mb-3" style="max-width: 240px;">
+              <span class="input-group-text">Khác</span>
+              <input class="form-control" type="number" min="1" max="99" id="peopleCustom" placeholder="VD: 15">
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+              <button class="btn btn-primary" type="submit">Xác nhận</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- QR modal -->
   <div class="modal fade" id="qrModal" tabindex="-1" aria-hidden="true">
@@ -632,6 +678,30 @@
             shareLink.select();
           }
         }
+      });
+
+      // People modal auto show if not set
+      const peopleModalEl = document.getElementById("peopleModal");
+      const pc = Number("{{ people_count or 0 }}");
+      if (peopleModalEl && (!pc || pc <= 0)) {
+        const m = new bootstrap.Modal(peopleModalEl);
+        m.show();
+      }
+
+      const pcInput = document.getElementById("people_count_input");
+      document.querySelectorAll("#peopleButtons button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const n = Number(btn.dataset.n || "0");
+          if (pcInput) pcInput.value = String(n);
+          document.querySelectorAll("#peopleButtons button").forEach(b => b.className = "btn btn-outline-primary people-btn");
+          btn.className = "btn btn-primary people-btn";
+        });
+      });
+
+      const custom = document.getElementById("peopleCustom");
+      custom && custom.addEventListener("input", () => {
+        const n = Number(custom.value || "0");
+        if (n > 0 && pcInput) pcInput.value = String(n);
       });
     })();
   </script>
