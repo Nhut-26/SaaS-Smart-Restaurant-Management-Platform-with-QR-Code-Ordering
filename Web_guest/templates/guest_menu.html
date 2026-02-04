@@ -494,6 +494,7 @@
       const QR_URL = "/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/qr.png";
 
       const lastStatus = new Map();
+      let firstLoad = true;
 
       const elOrders = document.getElementById("orders-container");
       const elLastUpdated = document.getElementById("orders-last-updated");
@@ -594,21 +595,26 @@
             elOrders.innerHTML = `<div class="vstack gap-2">${orders.map(renderOrder).join("")}</div>`;
           }
 
-          for (const o of orders) {
-            const prev = lastStatus.get(o.id);
-            if (!prev) {
-              showToast(`Đã ghi nhận đơn #${o.id} (${statusMeta(o.status).label})`);
-            } else if (prev !== o.status) {
-              showToast(`Đơn #${o.id}: ${statusMeta(prev).label} → ${statusMeta(o.status).label}`);
+          // tránh toast spam lần đầu load
+          if (!firstLoad) {
+            for (const o of orders) {
+              const prev = lastStatus.get(o.id);
+              if (!prev) {
+                showToast(`Đã ghi nhận đơn #${o.id} (${statusMeta(o.status).label})`);
+              } else if (prev !== o.status) {
+                showToast(`Đơn #${o.id}: ${statusMeta(prev).label} → ${statusMeta(o.status).label}`);
+              }
             }
-            lastStatus.set(o.id, o.status);
           }
+          for (const o of orders) lastStatus.set(o.id, o.status);
 
           const nowIso = data.server_time || new Date().toISOString();
           if (elLastUpdated) elLastUpdated.textContent = `Cập nhật lúc ${fmtTime(nowIso)}`;
 
           elConn.className = "badge text-bg-success";
           elConn.textContent = "Đang theo dõi";
+
+          firstLoad = false;
         } catch (err) {
           elConn.className = "badge text-bg-danger";
           elConn.textContent = "Mất kết nối";
@@ -668,16 +674,30 @@
         } catch (e) {}
       });
 
-      copyBtn && copyBtn.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(SHARE_URL);
-          showToast("Đã copy link menu.");
-        } catch (e) {
-          if (shareLink) {
-            shareLink.focus();
-            shareLink.select();
+      async function copyText(text) {
+        // modern
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+        // fallback
+        if (shareLink) {
+          shareLink.value = text;
+          shareLink.focus();
+          shareLink.select();
+          try {
+            return document.execCommand("copy");
+          } catch (e) {
+            return false;
           }
         }
+        return false;
+      }
+
+      copyBtn && copyBtn.addEventListener("click", async () => {
+        const ok = await copyText(SHARE_URL);
+        if (ok) showToast("Đã copy link menu.");
+        else showToast("Không copy được, hãy copy thủ công.");
       });
 
       // People modal auto show if not set
