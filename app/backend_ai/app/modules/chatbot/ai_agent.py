@@ -228,7 +228,7 @@ class FoodChatAgent:
                 "user_id": str(user_id),
                 "restaurant_id": str(rest_id),
                 "table_id": str(real_table_id),
-                "status": "confirmed",
+                "status": "pending",
                 "booking_time": final_timestamp,
                 "people_count": int(info['people']) if info['people'] else 2,
                 "customer_name": info['name'],
