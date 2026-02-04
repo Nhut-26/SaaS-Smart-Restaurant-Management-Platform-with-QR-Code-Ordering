@@ -13,18 +13,27 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
 
 const RegisterScreen = ({ navigation }) => {
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [phone, setPhone] = useState('');
+  const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const { register } = useAuth();
+
   const handleRegister = async () => {
-    // Validation
-    if (!username || !email || !password || !confirmPassword) {
-      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin');
+    if (!email || !password || !confirmPassword || !phone) {
+      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin bắt buộc (*)');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Lỗi', 'Email không hợp lệ');
       return;
     }
 
@@ -38,19 +47,38 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
+  const phoneRegex = /^0[0-9]{9,10}$/;
+
+  if (!phoneRegex.test(phone)) {
+  Alert.alert('Lỗi', 'Số điện thoại không hợp lệ (Bắt đầu bằng 0 , tổng 10-11 chữ số)');
+  return;
+    }
+
     setLoading(true);
     try {
-      
-      // Giả lập đăng ký thành công
-      setTimeout(() => {
+      const result = await register({
+        email, 
+        password,
+        phone: phone,
+        fullName
+      });
+
+      if (result.success) {
         Alert.alert(
           'Thành công',
-          'Đăng ký thành công! Vui lòng đăng nhập.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
+          'Đăng ký thành công! Bạn đã được tự động đăng nhập.',
+          [{
+            text: 'OK',
+            onPress: () => {
+            }
+          }]
         );
-      }, 1000);
+      } else {
+        Alert.alert('Đăng ký thất bại', result.error || 'Có lỗi xảy ra');
+      }
     } catch (error) {
-      Alert.alert('Đăng ký thất bại', 'Email hoặc tên đăng nhập đã tồn tại');
+      console.error('Registration error:', error);
+      Alert.alert('Đăng ký thất bại', 'Có lỗi xảy ra khi đăng ký');
     } finally {
       setLoading(false);
     }
@@ -69,53 +97,74 @@ const RegisterScreen = ({ navigation }) => {
           <ScrollView contentContainerStyle={styles.scrollContent}>
             <View style={styles.registerBox}>
               <Text style={styles.title}>Đăng ký</Text>
-              
+
+              {/* Full Name Field */}
               <View style={styles.inputContainer}>
                 <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Tên đăng nhập"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
+                  placeholder="Họ và tên *"
+                  value={fullName}
+                  onChangeText={setFullName}
+                  autoCapitalize="words"
                 />
               </View>
-              
+
+              {/* Email Field (dùng làm username) */}
               <View style={styles.inputContainer}>
                 <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Email"
+                  placeholder="Email *"
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  autoComplete="email"
                 />
               </View>
-              
+
+              {/* Phone Field */}
+              <View style={styles.inputContainer}>
+                <Ionicons name="call-outline" size={20} color="#666" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Số điện thoại *"
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  maxLength={11}
+                />
+              </View>
+
+              {/* Password Field */}
               <View style={styles.inputContainer}>
                 <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Mật khẩu"
+                  placeholder="Mật khẩu *"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
                 />
               </View>
-              
+
+              {/* Confirm Password Field */}
               <View style={styles.inputContainer}>
                 <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Xác nhận mật khẩu"
+                  placeholder="Xác nhận mật khẩu *"
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   secureTextEntry
                 />
               </View>
-              
-              <TouchableOpacity 
+
+              <Text style={styles.noteText}>
+              </Text>
+
+              <TouchableOpacity
                 style={[styles.registerButton, loading && styles.buttonDisabled]}
                 onPress={handleRegister}
                 disabled={loading}
@@ -124,11 +173,11 @@ const RegisterScreen = ({ navigation }) => {
                   {loading ? 'Đang đăng ký...' : 'Đăng ký'}
                 </Text>
               </TouchableOpacity>
-              
+
               <View style={styles.loginLink}>
                 <Text style={styles.loginText}>
                   Đã có tài khoản?{' '}
-                  <Text 
+                  <Text
                     style={styles.loginLinkText}
                     onPress={() => navigation.goBack()}
                   >
@@ -194,6 +243,13 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     fontSize: 16,
+  },
+  noteText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 5,
+    marginBottom: 15,
+    fontStyle: 'italic',
   },
   registerButton: {
     backgroundColor: '#ff6b35',

@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ImageBackground,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -16,154 +15,144 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 
 const LoginScreen = ({ navigation }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
+
+  const { login, authError, clearAuthError } = useAuth();
 
   const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin');
+    if (!email || !password) {
+      Alert.alert('Lỗi', 'Vui lòng nhập email và mật khẩu');
       return;
     }
 
     setLoading(true);
+    clearAuthError();
+
     try {
-      console.log('Bắt đầu đăng nhập...');
-      
-      // Giả lập login thành công
-      const userData = {
-        id: 1,
-        name: username === 'admin' ? 'Quản trị viên' : 'Nguyễn Văn A',
-        email: username.includes('@') ? username : `${username}@gmail.com`,
-        phone: '0987654321',
-        membership: 'VIP',
-        totalSpent: 12500000
-      };
-      
-      console.log('Dữ liệu user:', userData);
-      
-      // Gọi hàm login từ AuthContext
-      const result = await login(userData);
-      
-      console.log('Kết quả login:', result);
-      
-      if (result && result.success) {
-        console.log('Đăng nhập thành công, điều hướng...');
-        // Điều hướng đến CustomerFlow
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'CustomerFlow' }],
-        });
+      const usernameClean = String(email || '').trim().toLowerCase();
+      const passwordClean = String(password || '').trim();
+
+      const result = await login({ username: usernameClean, password: passwordClean });
+
+      if (result.success) {
+        Alert.alert('Thành công', 'Đăng nhập thành công!');
       } else {
-        Alert.alert('Đăng nhập thất bại', 'Sai tên đăng nhập hoặc mật khẩu');
+        Alert.alert('Đăng nhập thất bại', result.error || 'Có lỗi xảy ra');
       }
     } catch (error) {
-      console.error('Lỗi đăng nhập:', error);
-      Alert.alert('Đăng nhập thất bại', 'Có lỗi xảy ra: ' + error.message);
+      console.error('Login error:', error);
+      Alert.alert('Lỗi', 'Có lỗi xảy ra khi đăng nhập');
     } finally {
       setLoading(false);
     }
   };
 
-  // Nút chuyển sang Guest (không cần đăng nhập)
-  const goToGuestMode = () => {
-    navigation.navigate('Welcome');
-  };
-
-  // Nút quét QR
-  const goToQrScanner = () => {
-    navigation.navigate('QrScanner');
+  const handleForgotPassword = () => {
+    Alert.alert(
+      'Quên mật khẩu',
+      'Vui lòng liên hệ quản trị viên hoặc sử dụng email đã đăng ký để khôi phục mật khẩu.',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Khôi phục mật khẩu',
+          onPress: () => {
+            Alert.alert(
+              'Thông báo',
+              'Vui lòng liên hệ với quản trị viên qua email: admin@restaurant.com'
+            );
+          }
+        }
+      ]
+    );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ImageBackground
-        source={{ uri: 'https://images.pexels.com/photos/31216391/pexels-photo-31216391.jpeg?cs=srgb&dl=pexels-mahmoudramadan-31216391.jpg&fm=jpg' }}
-        style={styles.background}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-        >
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            <View style={styles.loginBox}>
-              <Text style={styles.title}>Đăng nhập</Text>
-              <Text style={styles.subtitle}>Chào mừng bạn đến với Nhà Hàng Thông Minh</Text>
-              
-              <View style={styles.inputContainer}>
-                <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Tên đăng nhập hoặc email"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-              
-              <View style={styles.inputContainer}>
-                <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Mật khẩu"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
-              </View>
-              
-              <TouchableOpacity 
-                style={[styles.loginButton, loading && styles.buttonDisabled]}
-                onPress={handleLogin}
-                disabled={loading}
-              >
-                <Text style={styles.loginButtonText}>
-                  {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
-                </Text>
-              </TouchableOpacity>
-              
-              <View style={styles.registerLink}>
-                <Text style={styles.registerText}>
-                  Bạn chưa có tài khoản?{' '}
-                  <Text 
-                    style={styles.registerLinkText}
-                    onPress={() => navigation.navigate('Register')}
-                  >
-                    Đăng ký
-                  </Text>
-                </Text>
-              </View>
-              
-              <TouchableOpacity 
-                style={styles.forgotPassword}
-                onPress={() => Alert.alert('Thông báo', 'Liên hệ quản lý để lấy lại mật khẩu')}
-              >
-                <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
-              </TouchableOpacity>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.loginBox}>
+            <Text style={styles.title}>Đăng nhập</Text>
 
-              {/* Nút chuyển sang Guest Mode */}
-              <TouchableOpacity 
-                style={styles.guestButton}
-                onPress={goToGuestMode}
-              >
-                <Ionicons name="restaurant-outline" size={20} color="#FF6B35" />
-                <Text style={styles.guestButtonText}>Vào với tư cách khách</Text>
-              </TouchableOpacity>
+            {/* Email Field */}
+            <View style={styles.inputContainer}>
+              <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email (tên đăng nhập)"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                editable={!loading}
+              />
+            </View>
 
-              {/* Nút quét QR */}
-              <TouchableOpacity 
-                style={styles.qrButton}
-                onPress={goToQrScanner}
-              >
-                <Ionicons name="qr-code-outline" size={20} color="#666" />
-                <Text style={styles.qrButtonText}>Quét mã QR trên bàn</Text>
+            {/* Password Field */}
+            <View style={styles.inputContainer}>
+              <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Mật khẩu"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                editable={!loading}
+              />
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                <Ionicons
+                  name={showPassword ? "eye-off-outline" : "eye-outline"}
+                  size={20}
+                  color="#666"
+                />
               </TouchableOpacity>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </ImageBackground>
+
+            {/* Forgot Password */}
+            <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPassword}>
+              <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
+            </TouchableOpacity>
+
+            {/* Error Message */}
+            {authError && (
+              <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle-outline" size={16} color="#ff3b30" />
+                <Text style={styles.errorText}>{authError}</Text>
+              </View>
+            )}
+
+            {/* Login Button */}
+            <TouchableOpacity
+              style={[styles.loginButton, loading && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              <Text style={styles.loginButtonText}>
+                {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Register Link */}
+            <View style={styles.registerContainer}>
+              <Text style={styles.registerText}>Chưa có tài khoản? </Text>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Register')}
+                disabled={loading}
+              >
+                <Text style={[styles.registerLink, loading && styles.disabledLink]}>
+                  Đăng ký ngay
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -171,10 +160,7 @@ const LoginScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  background: {
-    flex: 1,
-    resizeMode: 'cover',
+    backgroundColor: '#f5f5f5',
   },
   keyboardView: {
     flex: 1,
@@ -185,52 +171,68 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   loginBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    padding: 30,
+    backgroundColor: 'white',
+    padding: 25,
     borderRadius: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 10,
-    color: '#333',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
     marginBottom: 30,
+    color: '#333',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 8,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 10,
     marginBottom: 15,
     borderWidth: 1,
-    borderColor: '#ddd',
-    paddingHorizontal: 10,
+    borderColor: '#e0e0e0',
+    paddingHorizontal: 15,
   },
   inputIcon: {
     marginRight: 10,
   },
   input: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 15,
     fontSize: 16,
+    color: '#333',
+  },
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginBottom: 20,
+  },
+  forgotPasswordText: {
+    color: '#ff6b35',
+    fontSize: 14,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffeaea',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  errorText: {
+    color: '#ff3b30',
+    marginLeft: 8,
+    fontSize: 14,
   },
   loginButton: {
     backgroundColor: '#ff6b35',
-    paddingVertical: 15,
-    borderRadius: 8,
+    paddingVertical: 16,
+    borderRadius: 10,
     alignItems: 'center',
-    marginTop: 10,
+    marginBottom: 20,
   },
   buttonDisabled: {
     backgroundColor: '#ccc',
@@ -240,55 +242,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  registerLink: {
-    marginTop: 20,
+  registerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 10,
   },
   registerText: {
     fontSize: 16,
     color: '#666',
   },
-  registerLinkText: {
+  registerLink: {
     color: '#ff6b35',
-    fontWeight: '600',
-  },
-  forgotPassword: {
-    marginTop: 15,
-    alignItems: 'center',
-  },
-  forgotPasswordText: {
-    color: '#666',
-    fontSize: 14,
-  },
-  guestButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-    padding: 12,
-    backgroundColor: '#FFF0EC',
-    borderRadius: 8,
-  },
-  guestButtonText: {
-    color: '#FF6B35',
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 10,
   },
-  qrButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 15,
-    padding: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-  },
-  qrButtonText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 10,
+  disabledLink: {
+    color: '#ccc',
   },
 });
 

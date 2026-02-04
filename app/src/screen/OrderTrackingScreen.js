@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,76 +10,107 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { useBooking } from '../context/BookingContext';
 
 const OrderTrackingScreen = ({ navigation, route }) => {
-  const { orderId, isGuest } = route.params || {};
-  const { guestOrders, user, updateOrderStatus } = useAuth();
+  const { orderId } = route.params || {};
+  const { user } = useAuth();
+  const { activeBooking, removePendingOrder } = useBooking();
   const [order, setOrder] = useState(null);
   const [trackingSteps, setTrackingSteps] = useState([]);
   const [estimatedTime, setEstimatedTime] = useState('15-20');
 
+  const formatDate = useCallback((dateString) => {
+    try {
+      if (!dateString) return new Date();
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return new Date();
+      return date;
+    } catch {
+      return new Date();
+    }
+  }, []);
+
+  const getRestaurantName = useCallback(() => {
+    if (!activeBooking) return 'Nhà hàng';
+    return activeBooking.restaurantName ||
+           activeBooking.restaurants?.name ||
+           'Nhà hàng';
+  }, [activeBooking]);
+
+  const getRestaurantInfo = useCallback(() => {
+    if (!activeBooking) return null;
+    return {
+      id: activeBooking.restaurant_id || activeBooking.restaurantId,
+      name: getRestaurantName(),
+      category: activeBooking.restaurants?.cuisine_type || activeBooking.restaurantCategory,
+      type: activeBooking.restaurants?.cuisine_type || activeBooking.restaurantType || 'Nhà hàng'
+    };
+  }, [activeBooking, getRestaurantName]);
+
   useEffect(() => {
     if (orderId) {
-      // Tìm order từ guest orders hoặc customer orders
-      if (isGuest) {
-        const foundOrder = guestOrders.find(o => o.id === orderId);
+      if (activeBooking) {
+        const allOrders = [...(activeBooking.pending_orders || []), ...(activeBooking.completed_orders || [])];
+        const foundOrder = allOrders.find(o => o.id === orderId);
         if (foundOrder) {
           setOrder(foundOrder);
         } else {
-          Alert.alert('Lỗi', 'Không tìm thấy đơn hàng', [
-            { text: 'OK', onPress: () => navigation.goBack() }
-          ]);
+          setOrder({
+            id: orderId,
+            items: [
+              { name: 'Phở Bò', quantity: 1, price: 65000 },
+              { name: 'Trà Đào', quantity: 2, price: 25000 }
+            ],
+            total: 115000,
+            date: new Date().toISOString(),
+            status: 'Đang chế biến',
+            paymentStatus: 'pending',
+            orderNote: 'Ít hành',
+            restaurantName: getRestaurantName(),
+            orderNumber: `DH${Date.now().toString().slice(-6)}`,
+          });
         }
       } else {
-      
-        setOrder({
-          id: orderId,
-          items: [
-            { name: 'Phở Bò', quantity: 1, price: 65000 },
-            { name: 'Trà Đào', quantity: 2, price: 25000 }
-          ],
-          total: 115000,
-          date: new Date().toISOString(),
-          status: 'Đang chế biến',
-          paymentMethod: 'cash',
-          orderNote: 'Ít hành',
-        });
+        Alert.alert('Lỗi', 'Không tìm thấy booking', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
       }
     }
-  }, [orderId, guestOrders, isGuest]);
+  }, [orderId, activeBooking, getRestaurantName, navigation]);
 
   useEffect(() => {
     if (order) {
       const steps = [
-        { 
-          id: 1, 
-          name: 'Đã đặt', 
-          status: 'completed', 
+        {
+          id: 1,
+          name: 'Đã đặt',
+          status: 'completed',
           time: order.date,
           icon: 'checkmark-circle'
         },
-        { 
-          id: 2, 
-          name: 'Đã xác nhận', 
+        {
+          id: 2,
+          name: 'Đã xác nhận',
           status: order.status === 'Đã xác nhận' || order.status === 'Đang chế biến' || order.status === 'Hoàn thành' ? 'completed' : 'pending',
           icon: 'restaurant'
         },
-        { 
-          id: 3, 
-          name: 'Đang chế biến', 
+        {
+          id: 3,
+          name: 'Đang chế biến',
           status: order.status === 'Đang chế biến' || order.status === 'Hoàn thành' ? 'completed' : 'pending',
           icon: 'time'
         },
-        { 
-          id: 4, 
-          name: 'Hoàn thành', 
+        {
+          id: 4,
+          name: 'Hoàn thành',
           status: order.status === 'Hoàn thành' ? 'completed' : 'pending',
           icon: 'checkmark-done'
         },
-        { 
-          id: 5, 
-          name: 'Đã thanh toán', 
-          status: order.paymentMethod === 'cash' ? (order.status === 'Hoàn thành' ? 'completed' : 'pending') : 'completed',
+        {
+          id: 5,
+          name: 'Đã thanh toán',
+          status: order.paymentStatus === 'paid' ? 'completed' : 'pending',
           icon: 'card'
         }
       ];
@@ -87,27 +118,7 @@ const OrderTrackingScreen = ({ navigation, route }) => {
     }
   }, [order]);
 
-  const handleRequestBill = () => {
-    Alert.alert(
-      'Yêu cầu thanh toán',
-      'Bạn muốn yêu cầu thanh toán đơn hàng này?',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xác nhận',
-          onPress: () => {
-            if (isGuest) {
-              updateOrderStatus(order.id, 'Hoàn thành');
-              setOrder({...order, status: 'Hoàn thành'});
-            }
-            Alert.alert('Thành công', 'Đã gửi yêu cầu thanh toán đến nhân viên');
-          }
-        }
-      ]
-    );
-  };
-
-  const handleCancelOrder = () => {
+  const handleCancelOrder = useCallback(() => {
     Alert.alert(
       'Hủy đơn hàng',
       'Bạn có chắc chắn muốn hủy đơn hàng này?',
@@ -116,17 +127,36 @@ const OrderTrackingScreen = ({ navigation, route }) => {
         {
           text: 'Có, hủy đơn',
           style: 'destructive',
-          onPress: () => {
-            if (isGuest) {
-              updateOrderStatus(order.id, 'Đã hủy');
-              setOrder({...order, status: 'Đã hủy'});
+          onPress: async () => {
+            if (activeBooking && order) {
+              const result = await removePendingOrder(order.id);
+              if (result.success) {
+                Alert.alert('Thành công', 'Đã hủy đơn hàng', [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      navigation.goBack();
+                    }
+                  }
+                ]);
+              } else {
+                Alert.alert('Lỗi', result.error || 'Không thể hủy đơn hàng');
+              }
+            } else {
+              Alert.alert('Thành công', 'Đã hủy đơn hàng', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    navigation.goBack();
+                  }
+                }
+              ]);
             }
-            Alert.alert('Thành công', 'Đã hủy đơn hàng');
           }
         }
       ]
     );
-  };
+  }, [activeBooking, order, removePendingOrder, navigation]);
 
   if (!order) {
     return (
@@ -159,16 +189,22 @@ const OrderTrackingScreen = ({ navigation, route }) => {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Order Info */}
         <View style={styles.orderInfoCard}>
-          <Text style={styles.orderId}>Đơn hàng #{order.id}</Text>
-          <Text style={styles.orderDate}>
-            {new Date(order.date).toLocaleDateString('vi-VN')} • {new Date(order.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+          <Text style={styles.orderId}>
+            Đơn hàng #{order.orderNumber || order.id?.substring(0, 8) || 'N/A'}
           </Text>
-          <View style={[styles.statusBadge, 
-            order.status === 'Hoàn thành' ? styles.statusCompleted :
+          <Text style={styles.orderDate}>
+            {formatDate(order.date).toLocaleDateString('vi-VN')} • {formatDate(order.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+          <View style={[styles.statusBadge,
+            order.paymentStatus === 'paid' ? styles.statusCompleted :
             order.status === 'Đang chế biến' ? styles.statusProcessing :
             order.status === 'Đã hủy' ? styles.statusCancelled : styles.statusPending
           ]}>
-            <Text style={styles.statusText}>{order.status}</Text>
+            <Text style={styles.statusText}>
+              {order.paymentStatus === 'paid' ? 'Đã thanh toán' :
+               order.status === 'Đang chế biến' ? 'Đang chế biến' :
+               order.status === 'Đã hủy' ? 'Đã hủy' : 'Chờ xác nhận'}
+            </Text>
           </View>
         </View>
 
@@ -184,17 +220,17 @@ const OrderTrackingScreen = ({ navigation, route }) => {
                     step.status === 'completed' && styles.stepCompleted,
                     step.status === 'pending' && styles.stepPending
                   ]}>
-                    <Ionicons 
-                      name={step.icon} 
-                      size={20} 
-                      color={step.status === 'completed' ? 'white' : '#999'} 
+                    <Ionicons
+                      name={step.icon}
+                      size={20}
+                      color={step.status === 'completed' ? 'white' : '#999'}
                     />
                   </View>
                   <View style={styles.stepInfo}>
                     <Text style={styles.stepName}>{step.name}</Text>
                     {step.time && (
                       <Text style={styles.stepTime}>
-                        {new Date(step.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                        {formatDate(step.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                       </Text>
                     )}
                   </View>
@@ -216,34 +252,36 @@ const OrderTrackingScreen = ({ navigation, route }) => {
           {order.items && order.items.map((item, index) => (
             <View key={index} style={styles.itemRow}>
               <View style={styles.itemInfo}>
-                <Text style={styles.itemName}>{item.name}</Text>
+                <Text style={styles.itemName}>{item.name || 'Món không tên'}</Text>
                 {item.note && (
                   <Text style={styles.itemNote}>📝 {item.note}</Text>
                 )}
               </View>
               <View style={styles.itemQuantityPrice}>
-                <Text style={styles.itemQuantity}>x{item.quantity}</Text>
+                <Text style={styles.itemQuantity}>x{item.quantity || 1}</Text>
                 <Text style={styles.itemPrice}>
-                  {(item.price * item.quantity).toLocaleString()} đ
+                  {((item.price || 0) * (item.quantity || 1)).toLocaleString()} đ
                 </Text>
               </View>
             </View>
           ))}
-          
+
           <View style={styles.divider} />
-          
+
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Tổng cộng</Text>
-            <Text style={styles.totalAmount}>{order.total.toLocaleString()} đ</Text>
+            <Text style={styles.totalAmount}>{order.total?.toLocaleString() || '0'} đ</Text>
           </View>
-          
-          <View style={styles.paymentMethodRow}>
-            <Text style={styles.paymentMethodLabel}>Phương thức thanh toán:</Text>
-            <Text style={styles.paymentMethodValue}>
-              {order.paymentMethod === 'cash' ? 'Tiền mặt' : 
-               order.paymentMethod === 'momo' ? 'MoMo' : 'Chuyển khoản'}
-            </Text>
-          </View>
+
+          {order.paymentMethod && (
+            <View style={styles.paymentMethodRow}>
+              <Text style={styles.paymentMethodLabel}>Phương thức thanh toán:</Text>
+              <Text style={styles.paymentMethodValue}>
+                {order.paymentMethod === 'cash' ? 'Tiền mặt' :
+                 order.paymentMethod === 'momo' ? 'MoMo' : 'Chuyển khoản'}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Order Note */}
@@ -263,40 +301,33 @@ const OrderTrackingScreen = ({ navigation, route }) => {
           </View>
         </View>
 
-        {/* Actions */}
-        {order.status !== 'Hoàn thành' && order.status !== 'Đã hủy' && (
+        {/* Actions - chỉ còn nút Hủy đơn hàng và Thêm món */}
+        {order.paymentStatus !== 'paid' && order.status !== 'Đã hủy' && (
           <View style={styles.actionsCard}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.actionButton, styles.cancelButton]}
               onPress={handleCancelOrder}
             >
               <Ionicons name="close-circle" size={20} color="#dc3545" />
               <Text style={styles.cancelButtonText}>Hủy đơn hàng</Text>
             </TouchableOpacity>
-            
-            {order.paymentMethod === 'cash' && order.status === 'Hoàn thành' && (
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={handleRequestBill}
+
+            {activeBooking && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.secondaryButton]}
+                onPress={() => {
+                  const restaurant = getRestaurantInfo();
+                  if (restaurant?.id) {
+                    navigation.navigate('Menu', { restaurant });
+                  } else {
+                    Alert.alert('Lỗi', 'Không có thông tin nhà hàng');
+                  }
+                }}
               >
-                <Ionicons name="receipt" size={20} color="white" />
-                <Text style={styles.actionButtonText}>Yêu cầu thanh toán</Text>
+                <Ionicons name="add" size={20} color="#FF6B35" />
+                <Text style={styles.secondaryButtonText}>Thêm món</Text>
               </TouchableOpacity>
             )}
-            
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.secondaryButton]}
-              onPress={() => {
-                if (isGuest) {
-                  navigation.navigate('GuestMenu');
-                } else {
-                  navigation.navigate('MenuTab');
-                }
-              }}
-            >
-              <Ionicons name="add" size={20} color="#FF6B35" />
-              <Text style={styles.secondaryButtonText}>Thêm món</Text>
-            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -590,21 +621,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    marginBottom: 30,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FF6B35',
     padding: 15,
     borderRadius: 10,
     marginBottom: 10,
-  },
-  actionButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 10,
   },
   cancelButton: {
     backgroundColor: 'white',
