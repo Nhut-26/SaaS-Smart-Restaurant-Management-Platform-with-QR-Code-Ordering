@@ -1,12 +1,8 @@
-﻿fastapi
-uvicorn
-pydantic
+﻿Flask
+Flask-Cors
 python-dotenv
 supabase
 groq
 requests
-httpx
-Flask
-Flask-Cors
 gunicorn
-asgiref
+uvicorn

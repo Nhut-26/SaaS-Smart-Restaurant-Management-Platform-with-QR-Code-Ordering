@@ -35,6 +35,13 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # 2. Cấu hình Groq AI
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+# --- THÊM ĐOẠN NÀY ĐỂ DEBUG ---
+if GROQ_API_KEY:
+    print(f"✅ Đã nhận GROQ_API_KEY: {GROQ_API_KEY[:5]}******")
+else:
+    print("❌ CHƯA NHẬN ĐƯỢC GROQ_API_KEY (Kiểm tra lại Environment trên Render)")
+# ------------------------------
+
 if not GROQ_API_KEY:
     print("❌ LỖI: Thiếu GROQ_API_KEY trong .env")
 
