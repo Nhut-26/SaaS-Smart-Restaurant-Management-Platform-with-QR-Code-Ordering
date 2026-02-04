@@ -1,14 +1,17 @@
+# main.py
 import os
 import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.status import HTTP_302_FOUND
 from starlette.templating import Jinja2Templates
+
 from postgrest.exceptions import APIError
 from supabase_client import supabase
 from qr_service import make_qr_png_advanced
@@ -22,6 +25,9 @@ DEFAULT_BRANCH_UUID = os.getenv("DEFAULT_BRANCH_UUID")
 
 TABLE_ID_MODE = "uuid"
 
+# ====== Default guest identity ======
+DEFAULT_CUSTOMER_NAME = "Khách vãng lai"
+
 app = FastAPI(title=APP_TITLE)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
 
@@ -32,7 +38,26 @@ if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+# =========================
+# AUTO STATUS TIMELINE
+# =========================
+# NEW -> CONFIRMED 5s
+# CONFIRMED -> COOKING 10s  (tổng 15s)
+# COOKING -> READY 15s      (tổng 30s)
+# READY -> SERVED 20s       (tổng 50s)
+_STATUS_MILESTONES = [
+    (0, "NEW"),
+    (5, "CONFIRMED"),
+    (15, "COOKING"),
+    (30, "READY"),
+    (50, "SERVED"),
+]
+_TERMINAL_STATUSES = {"SERVED", "CANCELLED"}
+
+
+# =========================
 # Helpers
+# =========================
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -93,7 +118,65 @@ def is_uuid(s: str) -> bool:
     return bool(s and _UUID_RE.match(s.strip()))
 
 
+# =========================
+# AUTO STATUS HELPERS
+# =========================
+def _parse_iso_dt(s: str) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+def desired_status_by_elapsed(elapsed_s: float) -> str:
+    if elapsed_s < 0:
+        return "NEW"
+    cur = "NEW"
+    for sec, st in _STATUS_MILESTONES:
+        if elapsed_s >= sec:
+            cur = st
+        else:
+            break
+    return cur
+
+def db_update_booking_status(booking_id: str, new_status: str) -> None:
+    try:
+        supabase.table("bookings").update({"status": new_status}).eq("id", booking_id).execute()
+    except Exception as e:
+        _raise_db_error(e, "Cannot update booking status")
+
+def maybe_auto_advance_booking(b: Dict[str, Any]) -> Optional[str]:
+    cur = (b.get("status") or "").upper() or "NEW"
+    if cur in _TERMINAL_STATUSES:
+        return None
+
+    bt = b.get("booking_time") or b.get("created_at") or b.get("updated_at")
+    start = _parse_iso_dt(bt) if isinstance(bt, str) else None
+    if not start:
+        return None
+
+    now = datetime.now(timezone.utc)
+    elapsed = (now - start).total_seconds()
+
+    desired = booking_status_to_steps(desired_status_by_elapsed(elapsed))
+
+    order_rank = {"NEW": 0, "CONFIRMED": 1, "COOKING": 2, "READY": 3, "SERVED": 4, "CANCELLED": -1}
+    cur_rank = order_rank.get(booking_status_to_steps(cur), 0)
+    des_rank = order_rank.get(desired, 0)
+
+    if des_rank > cur_rank:
+        db_update_booking_status(b.get("id"), desired)
+        return desired
+
+    return None
+
+
+# =========================
 # DB access (Supabase)
+# =========================
+_COL_MISSING_RE = re.compile(r'column "([^"]+)" .* does not exist', re.IGNORECASE)
+
 def _raise_db_error(e: Exception, default_msg: str = "Database error"):
     if isinstance(e, APIError):
         detail = None
@@ -109,6 +192,7 @@ def db_list_tables(restaurant_id: str) -> List[Dict[str, Any]]:
         res = (
             supabase.table("tables")
             .select("*")
+            .eq("restaurant_id", restaurant_id)  # ✅ quan trọng
             .order("table_name")
             .execute()
         )
@@ -116,7 +200,7 @@ def db_list_tables(restaurant_id: str) -> List[Dict[str, Any]]:
     except Exception as e:
         _raise_db_error(e, "Cannot list tables")
 
-# lấy table row theo table_name để biết restaurant_id thật của bàn + table_uuid chính xác
+
 def db_get_table_row_by_name(table_name: str) -> Optional[Dict[str, Any]]:
     try:
         res = (
@@ -140,9 +224,7 @@ def db_get_first_table_with_restaurant() -> Optional[Dict[str, Any]]:
             .limit(1)
             .execute()
         )
-        if res.data:
-            return res.data[0]
-        return None
+        return res.data[0] if res.data else None
     except Exception as e:
         _raise_db_error(e, "Cannot get first table")
 
@@ -155,9 +237,7 @@ def db_get_first_table_any_restaurant() -> Optional[Dict[str, Any]]:
             .limit(1)
             .execute()
         )
-        if res.data:
-            return res.data[0]
-        return None
+        return res.data[0] if res.data else None
     except Exception as e:
         _raise_db_error(e, "Cannot get first table")
 
@@ -170,9 +250,7 @@ def db_get_restaurant_name(restaurant_id: str) -> Optional[str]:
             .limit(1)
             .execute()
         )
-        if res.data:
-            return res.data[0].get("name")
-        return None
+        return res.data[0].get("name") if res.data else None
     except Exception:
         return None
 
@@ -252,6 +330,7 @@ def db_get_branch_uuid_by_code_or_name(restaurant_id: str, branch_key: str) -> O
         ))
         if res and res.data:
             return res.data[0].get("id")
+
         res = _safe_exec(lambda: (
             supabase.table("branches")
             .select("id")
@@ -264,30 +343,98 @@ def db_get_branch_uuid_by_code_or_name(restaurant_id: str, branch_key: str) -> O
             return res.data[0].get("id")
 
         return None
-
     except Exception as e:
         _raise_db_error(e, "Cannot resolve branch uuid")
 
 
+# =========================
+# People count (Hướng B -> lưu vào bookings type="visit")
+# =========================
+def _people_session_key(restaurant_id: str, table_uuid: str) -> str:
+    return f"people_count::{restaurant_id}::{table_uuid}"
+
+def db_get_latest_visit_for_table(restaurant_id: str, table_uuid: str) -> Optional[Dict[str, Any]]:
+    try:
+        res = (
+            supabase.table("bookings")
+            .select("*")
+            .eq("restaurant_id", restaurant_id)
+            .eq("table_id", table_uuid)
+            .eq("type", "visit")
+            .order("booking_time", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        _raise_db_error(e, "Cannot get latest visit booking")
+
+def db_upsert_visit_people_count(restaurant_id: str, table_uuid: str, people_count: int) -> Dict[str, Any]:
+    latest = db_get_latest_visit_for_table(restaurant_id, table_uuid)
+
+    if latest and latest.get("id"):
+        try:
+            res = (
+                supabase.table("bookings")
+                .update({"people_count": people_count})
+                .eq("id", latest["id"])
+                .execute()
+            )
+            return res.data[0] if res.data else latest
+        except Exception as e:
+            _raise_db_error(e, "Cannot update people_count (visit booking)")
+
+    payload = {
+        "restaurant_id": restaurant_id,
+        "table_id": table_uuid,
+        "tenant_id": None,
+        "user_id": None,
+        "phone": None,  # khách vãng lai -> NULL
+        "people_count": people_count,
+        "booking_time": now_iso(),
+        "status": "CONFIRMED",
+        "type": "visit",  # ✅ không phải order
+        "customer_name": DEFAULT_CUSTOMER_NAME,
+    }
+
+    payload = {k: v for k, v in payload.items() if v is not None}
+
+    try:
+        res = supabase.table("bookings").insert(payload).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Insert visit booking failed")
+        return res.data[0]
+    except Exception as e:
+        _raise_db_error(e, "Insert visit booking failed")
+
+
+# =========================
 # Bookings (orders)
+# =========================
 def db_insert_order_as_booking(
     restaurant_id: str,
     table_uuid: str,
     cart_lines: List[Dict[str, Any]],
     cart_total: int,
+    people_count: Optional[int] = None,
 ) -> Dict[str, Any]:
     payload = {
         "restaurant_id": restaurant_id,
         "table_id": table_uuid,
         "tenant_id": None,
         "user_id": None,
-        "phone": None,
-        "people_count": None,
+        "phone": None,  # ✅ khách vãng lai -> NULL
+        "people_count": people_count,
         "booking_time": now_iso(),
         "status": "NEW",
         "type": "order",
-        "customer_name": json.dumps({"lines": cart_lines, "total": cart_total}, ensure_ascii=False),
+        "customer_name": DEFAULT_CUSTOMER_NAME,
+        "order_payload": {"lines": cart_lines, "total": cart_total},  # ✅ JSON chỗ mới
     }
+
+    # bỏ key None để hạn chế lỗi schema
+    payload = {k: v for k, v in payload.items() if v is not None}
+
     try:
         res = supabase.table("bookings").insert(payload).execute()
         if not res.data:
@@ -313,21 +460,45 @@ def db_list_orders_for_table(restaurant_id: str, table_uuid: str) -> List[Dict[s
         _raise_db_error(e, "Cannot list bookings(order)")
 
 def parse_booking_lines(b: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
-    raw = b.get("customer_name") or ""
-    try:
-        obj = json.loads(raw)
-        lines = obj.get("lines") if isinstance(obj, dict) else []
-        total = obj.get("total") if isinstance(obj, dict) else 0
-        if not isinstance(lines, list):
-            lines = []
+    # ✅ ưu tiên order_payload (mới)
+    obj = b.get("order_payload")
+
+    # order_payload là jsonb -> dict
+    if isinstance(obj, dict):
+        lines = obj.get("lines") if isinstance(obj.get("lines"), list) else []
+        total = obj.get("total", 0)
         return lines, money(total)
-    except Exception:
-        return [], 0
+
+    # order_payload là text -> string JSON
+    if isinstance(obj, str) and obj.strip():
+        try:
+            j = json.loads(obj)
+            if isinstance(j, dict):
+                lines = j.get("lines") if isinstance(j.get("lines"), list) else []
+                total = j.get("total", 0)
+                return lines, money(total)
+        except Exception:
+            pass
+
+    # fallback cực cũ (nếu trước đây nhét JSON vào customer_name)
+    raw = b.get("customer_name") or ""
+    if isinstance(raw, str) and raw.strip():
+        try:
+            old = json.loads(raw)
+            if isinstance(old, dict):
+                lines = old.get("lines") if isinstance(old.get("lines"), list) else []
+                total = old.get("total", 0)
+                return lines, money(total)
+        except Exception:
+            pass
+
+    return [], 0
 
 
+
+# =========================
 # Invoices
-_COL_MISSING_RE = re.compile(r'column "([^"]+)" .* does not exist', re.IGNORECASE)
-
+# =========================
 def db_create_invoice(
     restaurant_id: str,
     table_uuid: str,
@@ -354,15 +525,13 @@ def db_create_invoice(
             pass
 
     payload = {
-        # restaurant_id đôi khi typo (restautant_id)
         "restaurant_id": restaurant_id,
-        "restautant_id": restaurant_id,
+        "restautant_id": restaurant_id,  # typo fallback
 
         "table_id": table_uuid,
         "booking_id": booking_id,
         "branch_id": branch_id,
 
-        # customer fields đôi khi bị rút gọn trên UI
         "customer_name": customer_name,
         "customer_nan": customer_name,
 
@@ -379,16 +548,13 @@ def db_create_invoice(
 
         "status": "Draft",
 
-        # payment_status đôi khi rút gọn
         "payment_status": "unpaid",
         "payment_stati": "unpaid",
 
         "paid_amount": 0,
-
         "issued_at": now_iso(),
         "notes": notes_value,
 
-        # tenant_id chỉ giữ nếu DB có
         "tenant_id": tenant_id,
     }
 
@@ -415,7 +581,6 @@ def db_create_invoice(
                     msg = str(detail.get("message") or "")
                     code = str(detail.get("code") or "")
 
-                # column missing => drop and retry
                 if code == "42703" or ("does not exist" in msg.lower() and "column" in msg.lower()):
                     m = _COL_MISSING_RE.search(msg)
                     if m:
@@ -424,7 +589,6 @@ def db_create_invoice(
                             p.pop(missing_col, None)
                             continue
 
-                    # fallback drop một vài field hay mismatch
                     for k in ["tenant_id", "issued_at", "service_fee", "paid_amount", "discount_amount", "tax_amount"]:
                         if k in p:
                             p.pop(k, None)
@@ -455,7 +619,9 @@ def db_get_latest_invoice_for_table(table_uuid: str) -> Optional[Dict[str, Any]]
         _raise_db_error(e, "Cannot get latest invoice")
 
 
+# =========================
 # Business helpers
+# =========================
 def build_menu_view_models(menu_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     items = []
     for r in menu_rows:
@@ -525,7 +691,10 @@ def build_bill_from_orders(orders: List[Dict[str, Any]], menu_rows: List[Dict[st
     lines_out.sort(key=lambda x: (x["name"], x["note"]))
     return {"total": total, "qty": qty, "lines": lines_out}
 
+
+# =========================
 # Routes
+# =========================
 @app.get("/health")
 def health():
     return {"ok": True, "time": now_iso()}
@@ -563,6 +732,38 @@ def qr_png(request: Request, restaurant_id: str, branch_id: str, table_name: str
     png = make_qr_png_advanced(share_url, box_size=10, border=2)
     return Response(content=png, media_type="image/png")
 
+# Set people_count (Hướng B -> booking type="visit")
+@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/people/set")
+def set_people(request: Request, restaurant_id: str, branch_id: str, table_name: str, people_count: int = Form(...)):
+    tbl = db_get_table_row_by_name(table_name)
+    if not tbl:
+        raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
+
+    real_restaurant_id = tbl.get("restaurant_id") or restaurant_id
+    table_uuid = tbl.get("id")
+    if not table_uuid:
+        raise HTTPException(status_code=500, detail="Table id missing")
+
+    pc = safe_int(people_count, 0)
+    if pc <= 0 or pc > 50:
+        request.session["flash"] = "Số người không hợp lệ."
+        return RedirectResponse(
+            url=f"/g/{real_restaurant_id}/{branch_id}/tables/{table_name}",
+            status_code=HTTP_302_FOUND,
+        )
+
+    # lưu session theo bàn
+    request.session[_people_session_key(real_restaurant_id, table_uuid)] = pc
+
+    # upsert visit booking
+    db_upsert_visit_people_count(real_restaurant_id, table_uuid, pc)
+
+    request.session["flash"] = f"Đã lưu số người: {pc}"
+    return RedirectResponse(
+        url=f"/g/{real_restaurant_id}/{branch_id}/tables/{table_name}",
+        status_code=HTTP_302_FOUND,
+    )
+
 @app.get("/g/{restaurant_id}/{branch_id}/tables/{table_name}", response_class=HTMLResponse)
 def guest_menu(
     request: Request,
@@ -581,6 +782,7 @@ def guest_menu(
     if not table_uuid:
         raise HTTPException(status_code=500, detail="Table id missing")
 
+    # redirect nếu restaurant_id trên URL sai
     if tbl.get("restaurant_id") and tbl.get("restaurant_id") != restaurant_id:
         return RedirectResponse(
             url=f"/g/{tbl.get('restaurant_id')}/{branch_id}/tables/{table_name}?q={q}&category={category}",
@@ -602,9 +804,15 @@ def guest_menu(
     cart_total, cart_qty, cart_map = compute_cart_totals(cart, menu_rows)
 
     orders_raw = db_list_orders_for_table(real_restaurant_id, table_uuid)
+
+    # auto-advance status khi render trang
+    for o in orders_raw:
+        new_status = maybe_auto_advance_booking(o)
+        if new_status:
+            o["status"] = new_status
+
     orders_vm = []
     mm = {m.get("id"): m for m in menu_rows}
-
     for o in orders_raw:
         lines, stored_total = parse_booking_lines(o)
         total = stored_total
@@ -631,6 +839,11 @@ def guest_menu(
     bill_paid = bool(latest_inv) and (ps == "paid")
 
     restaurant_name = db_get_restaurant_name(real_restaurant_id)
+
+    # ====== People count modal logic (show if chưa chọn) ======
+    people_key = _people_session_key(real_restaurant_id, table_uuid)
+    people_count = request.session.get(people_key)
+    show_people_modal = not isinstance(people_count, int) or people_count <= 0
 
     ctx = {
         "request": request,
@@ -663,11 +876,17 @@ def guest_menu(
         "bill_lines": bill["lines"],
         "bill_requested": bill_requested,
         "bill_paid": bill_paid,
+
+        # ====== for popup on guest_menu.html ======
+        "people_count": people_count if isinstance(people_count, int) else 0,
+        "show_people_modal": show_people_modal,
     }
     return templates.TemplateResponse("guest_menu.html", ctx)
 
 
-# Cart ops 
+# =========================
+# Cart ops
+# =========================
 @app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/cart/add")
 def cart_add(request: Request, restaurant_id: str, branch_id: str, table_name: str, item_id: str = Form(...)):
     cart = get_session_cart(request)
@@ -710,7 +929,9 @@ def cart_clear(request: Request, restaurant_id: str, branch_id: str, table_name:
     return RedirectResponse(url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}", status_code=HTTP_302_FOUND)
 
 
-# Place order (BOOKINGS) 
+# =========================
+# Place order (BOOKINGS)
+# =========================
 @app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/order/place")
 def place_order(request: Request, restaurant_id: str, branch_id: str, table_name: str):
     tbl = db_get_table_row_by_name(table_name)
@@ -734,11 +955,17 @@ def place_order(request: Request, restaurant_id: str, branch_id: str, table_name
         it = mm.get(ln["item_id"])
         cart_total += money(it.get("price") if it else 0) * safe_int(ln["qty"], 0)
 
+    # lấy people_count từ session (nếu có)
+    people_key = _people_session_key(real_restaurant_id, table_uuid)
+    pc = request.session.get(people_key)
+    pc = pc if isinstance(pc, int) and pc > 0 else None
+
     _ = db_insert_order_as_booking(
         restaurant_id=real_restaurant_id,
         table_uuid=table_uuid,
         cart_lines=cart_list,
         cart_total=cart_total,
+        people_count=pc,
     )
 
     request.session["cart"] = {}
@@ -749,7 +976,9 @@ def place_order(request: Request, restaurant_id: str, branch_id: str, table_name
     )
 
 
+# =========================
 # Request bill (INVOICES ONLY)
+# =========================
 @app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/bill/request")
 def request_bill(request: Request, restaurant_id: str, branch_id: str, table_name: str):
     tbl = db_get_table_row_by_name(table_name)
@@ -804,7 +1033,9 @@ def request_bill(request: Request, restaurant_id: str, branch_id: str, table_nam
     )
 
 
+# =========================
 # JSON endpoints
+# =========================
 @app.get("/g/{restaurant_id}/{branch_id}/tables/{table_name}/orders/json")
 def orders_json(restaurant_id: str, branch_id: str, table_name: str):
     tbl = db_get_table_row_by_name(table_name)
@@ -818,6 +1049,12 @@ def orders_json(restaurant_id: str, branch_id: str, table_name: str):
 
     menu_rows = db_get_menu_items(real_restaurant_id, q="", category="all")
     orders_raw = db_list_orders_for_table(real_restaurant_id, table_uuid)
+
+    # auto-advance status mỗi lần client poll
+    for o in orders_raw:
+        new_status = maybe_auto_advance_booking(o)
+        if new_status:
+            o["status"] = new_status
 
     mm = {m.get("id"): m for m in menu_rows}
     orders = []
@@ -876,11 +1113,50 @@ def orders_json(restaurant_id: str, branch_id: str, table_name: str):
 
 @app.get("/g/{restaurant_id}/{branch_id}/tables/status/json")
 def tables_status_json(restaurant_id: str, branch_id: str):
+    # 1) lấy danh sách bàn đúng restaurant
     tbl_rows = db_list_tables(restaurant_id)
+
+    # 2) bàn đang chờ thanh toán = có invoice unpaid
+    try:
+        inv = (
+            supabase.table("invoices")
+            .select("table_id,payment_status")
+            .eq("restaurant_id", restaurant_id)
+            .eq("payment_status", "unpaid")
+            .execute()
+        )
+        billing_tables = {r.get("table_id") for r in (inv.data or []) if r.get("table_id")}
+    except Exception:
+        billing_tables = set()
+
+    # 3) bàn đang có khách = có order chưa kết thúc
+    # (NEW/CONFIRMED/COOKING/READY)
+    try:
+        bks = (
+            supabase.table("bookings")
+            .select("table_id,status,type")
+            .eq("restaurant_id", restaurant_id)
+            .eq("type", "order")
+            .in_("status", ["NEW", "CONFIRMED", "COOKING", "READY"])
+            .execute()
+        )
+        occupied_tables = {r.get("table_id") for r in (bks.data or []) if r.get("table_id")}
+    except Exception:
+        occupied_tables = set()
+
+    # 4) build map table_name -> ui status
     mp = {}
     for t in tbl_rows:
+        tid = t.get("id")
         name = t.get("table_name")
-        if not name:
+        if not name or not tid:
             continue
-        mp[name] = table_status_to_ui(t.get("status"))
+
+        if tid in billing_tables:
+            mp[name] = "billing"     # đỏ = chờ thanh toán
+        elif tid in occupied_tables:
+            mp[name] = "occupied"    # vàng = đang có khách
+        else:
+            mp[name] = "empty"       # xám = trống
+
     return JSONResponse({"server_time": now_iso(), "tables": mp})

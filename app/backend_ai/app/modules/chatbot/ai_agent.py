@@ -53,6 +53,44 @@ class FoodChatAgent:
             return res['weather'][0]['description'], res['main']['temp']
         except: return "Mát mẻ", 27
 
+
+    # --- HELPER: LẤY GÓI AI PLAN CỦA NHÀ HÀNG ---
+    def _get_ai_config(self, restaurant_id):
+        default_config = {"plan": "basic", "delay": 5, "model": "llama-3.3-70b-versatile"}
+        
+        if not restaurant_id:
+            return default_config
+
+        try:
+            # 1. Từ Restaurant ID -> Lấy Tenant -> Lấy ai_plan
+            # Lưu ý: Cú pháp select nested của Supabase
+            response = self.supabase.table("restaurants")\
+                .select("tenants(ai_plan)")\
+                .eq("id", restaurant_id)\
+                .single()\
+                .execute()
+            
+            # 2. Parse dữ liệu
+            if response.data and response.data.get('tenants'):
+                plan = response.data['tenants'].get('ai_plan', 'basic') # Mặc định basic nếu null
+                
+                # 3. Cấu hình theo yêu cầu của bạn
+                if plan == 'pro': # GPT 3 - Nhanh nhất
+                    return {"plan": "pro", "delay": 0, "model": "llama-3.3-70b-versatile"}
+                
+                elif plan == 'plus': # GPT 2 - Nhanh (2.5s)
+                    return {"plan": "plus", "delay": 2.5, "model": "llama-3.3-70b-versatile"}
+                
+                else: # basic hoặc free - GPT 1 - Chậm (5s)
+                    return {"plan": "basic", "delay": 5, "model": "llama-3.1-8b-instant"} 
+                    # Mẹo: Gói thấp dùng model 8b (nhẹ hơn/kém thông minh hơn xíu) để phân cấp rõ hơn
+            
+            return default_config
+            
+        except Exception as e:
+            print(f"⚠️ Lỗi lấy AI Plan: {e}")
+            return default_config
+
     # --- HELPER: LẤY MÓN BESTSELLER TỪ TABLE MENUS ---
     def _get_bestseller_menus(self):
         try:
@@ -327,7 +365,14 @@ class FoodChatAgent:
     # 🚀 MAIN HANDLER (ĐIỀU PHỐI)
     # ---------------------------------------------------------
     async def handle_message(self, user_id, message, lat, lng, current_screen, restaurant_id, memory):
-        print(f"📩 User: {message}")
+        # 1. LẤY CẤU HÌNH GÓI CƯỚC & ÁP DỤNG DELAY
+        ai_config = self._get_ai_config(restaurant_id)
+        
+        print(f"📩 User: {message} | 🏢 RestID: {restaurant_id} | 💎 Plan: {ai_config['plan']} (Delay: {ai_config['delay']}s)")
+
+        # --- ÁP DỤNG ĐỘ TRỄ (Mô phỏng tốc độ đường truyền) ---
+        if ai_config['delay'] > 0:
+            time.sleep(ai_config['delay'])
 
         weather_desc, temp = self._get_weather(lat, lng)
 
@@ -358,6 +403,7 @@ class FoodChatAgent:
             # Context phong phú hơn
             context_prompt = f"""
             THÔNG TIN NGỮ CẢNH:
+            - Gói AI đang dùng: {ai_config['plan']} (Hãy trả lời tương xứng với gói này).
             - Thời tiết hiện tại: {weather_desc}, nhiệt độ {temp} độ C.
             - Nếu trời mưa/lạnh: Ưu tiên gợi ý món ấm nóng (lẩu, nướng) trong 'mood_reply'.
             - Nếu trời nóng: Ưu tiên món mát (bia, kem, sushi).
@@ -369,7 +415,7 @@ class FoodChatAgent:
                     {"role": "system", "content": self.nlu_system_prompt + "\n" + context_prompt},
                     {"role": "user", "content": message}
                 ],
-                model="llama-3.3-70b-versatile", # Model này tốt, giữ nguyên
+                model=ai_config['model'], # Model này tốt, giữ nguyên
                 response_format={"type": "json_object"},
                 temperature=0.1 # Tăng nhẹ temperature để câu trả lời (mood_reply) tự nhiên hơn, bớt robot
             )
