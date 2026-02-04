@@ -12,7 +12,7 @@ window.currentUserInfo = null;
     const { data: { session }, error } = await supabaseClient.auth.getSession();
     
     if (error || !session) {
-        window.location.replace("../Login/loginManager.html");
+        window.location.replace("../loginManager/index.html");
         return;
     }
 
@@ -47,7 +47,7 @@ window.currentUserInfo = null;
         console.error("Lỗi lấy thông tin nhà hàng:", linkError);
         alert("Không tìm thấy thông tin nhà hàng liên kết! Vui lòng đăng nhập lại.");
         await supabaseClient.auth.signOut();
-        window.location.replace("../Login/loginManager.html");
+        window.location.replace("../loginManager/index.html");
         return;
     }
 
@@ -56,7 +56,7 @@ window.currentUserInfo = null;
     if (restaurant.status !== 'Active') {
         alert("Tài khoản nhà hàng này hiện không khả dụng (Chưa duyệt hoặc bị khóa).");
         await supabaseClient.auth.signOut();
-        window.location.replace("../Login/loginManager.html");
+        window.location.replace("../loginManager/index.html");
         return;
     }
 
