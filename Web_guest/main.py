@@ -2,6 +2,7 @@
 import os
 import json
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -495,25 +496,32 @@ def parse_booking_lines(b: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
     return [], 0
 
 
+# =========================
+# Invoices (FIXED FOR YOUR SCHEMA)
+# =========================
+def _gen_invoice_number() -> str:
+    # unique tốt, tránh collision khi nhiều người bấm cùng lúc
+    # INV-20260204-2f9c3a8b
+    return f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
 
-# =========================
-# Invoices
-# =========================
 def db_create_invoice(
     restaurant_id: str,
     table_uuid: str,
     sub_total: int,
     booking_id: Optional[str] = None,
-    tenant_id: Optional[str] = None,
     branch_id: Optional[str] = None,
     customer_name: Optional[str] = None,
     customer_phone: Optional[str] = None,
     customer_email: Optional[str] = None,
     bill_lines: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    if not tenant_id and DEFAULT_TENANT_ID:
-        tenant_id = DEFAULT_TENANT_ID
-
+    """
+    Match đúng schema invoices bạn đưa:
+    - invoice_number: NOT NULL, UNIQUE  ✅ bắt buộc set
+    - sub_total numeric
+    - payment_status default unpaid
+    - restaurant_id/table_id/branch_id/booking_id nullable
+    """
     notes_value = "Guest requested bill"
     if bill_lines:
         try:
@@ -525,90 +533,54 @@ def db_create_invoice(
             pass
 
     payload = {
+        # REQUIRED
+        "invoice_number": _gen_invoice_number(),
+
+        # Context / FK
         "restaurant_id": restaurant_id,
-        "restautant_id": restaurant_id,  # typo fallback
-
         "table_id": table_uuid,
-        "booking_id": booking_id,
         "branch_id": branch_id,
+        "booking_id": booking_id,
 
+        # Customer (nullable)
         "customer_name": customer_name,
-        "customer_nan": customer_name,
-
         "customer_phone": customer_phone,
-        "customer_phc": customer_phone,
-
         "customer_email": customer_email,
-        "customer_emi": customer_email,
 
-        "sub_total": sub_total,
+        # Money
+        "sub_total": float(money(sub_total)),
         "discount_amount": 0,
         "tax_amount": 0,
         "service_fee": 0,
-
-        "status": "Draft",
-
-        "payment_status": "unpaid",
-        "payment_stati": "unpaid",
-
         "paid_amount": 0,
-        "issued_at": now_iso(),
-        "notes": notes_value,
 
-        "tenant_id": tenant_id,
+        # Status
+        "status": "Draft",
+        "payment_status": "unpaid",
+
+        # timestamps (timestamp without time zone)
+        "issued_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds"),
+
+        # notes text
+        "notes": notes_value,
     }
 
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    def _try_insert_dynamic(p: Dict[str, Any]) -> Dict[str, Any]:
-        for _ in range(20):
-            try:
-                res = supabase.table("invoices").insert(p).execute()
-                if not res.data:
-                    raise HTTPException(status_code=500, detail="Insert invoice failed (no data returned)")
-                return res.data[0]
+    try:
+        res = supabase.table("invoices").insert(payload).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Insert invoice failed (no data returned)")
+        return res.data[0]
+    except Exception as e:
+        _raise_db_error(e, "Insert invoice failed")
 
-            except APIError as e:
-                detail = None
-                try:
-                    detail = e.args[0] if e.args else None
-                except Exception:
-                    detail = None
-
-                msg = ""
-                code = ""
-                if isinstance(detail, dict):
-                    msg = str(detail.get("message") or "")
-                    code = str(detail.get("code") or "")
-
-                if code == "42703" or ("does not exist" in msg.lower() and "column" in msg.lower()):
-                    m = _COL_MISSING_RE.search(msg)
-                    if m:
-                        missing_col = m.group(1)
-                        if missing_col in p:
-                            p.pop(missing_col, None)
-                            continue
-
-                    for k in ["tenant_id", "issued_at", "service_fee", "paid_amount", "discount_amount", "tax_amount"]:
-                        if k in p:
-                            p.pop(k, None)
-                            break
-                    continue
-
-                _raise_db_error(e, "Insert invoice failed")
-
-            except Exception as e:
-                _raise_db_error(e, "Insert invoice failed")
-
-        raise HTTPException(status_code=500, detail="Insert invoice failed after retries (schema mismatch?)")
-
-    return _try_insert_dynamic(dict(payload))
-
-def db_get_latest_invoice_for_table(table_uuid: str) -> Optional[Dict[str, Any]]:
+def db_get_latest_invoice_for_table(restaurant_id: str, table_uuid: str) -> Optional[Dict[str, Any]]:
     try:
         res = (
             supabase.table("invoices")
             .select("*")
+            .eq("restaurant_id", restaurant_id)
             .eq("table_id", table_uuid)
             .order("created_at", desc=True)
             .limit(1)
@@ -683,7 +655,13 @@ def build_bill_from_orders(orders: List[Dict[str, Any]], menu_rows: List[Dict[st
     for _, v in agg.items():
         sub = money(v["unit_price"]) * safe_int(v["qty"], 0)
         lines_out.append(
-            {"name": v["name"], "unit_price": money(v["unit_price"]), "qty": safe_int(v["qty"], 0), "subtotal": sub, "note": v.get("note") or ""}
+            {
+                "name": v["name"],
+                "unit_price": money(v["unit_price"]),
+                "qty": safe_int(v["qty"], 0),
+                "subtotal": sub,
+                "note": v.get("note") or "",
+            }
         )
         total += sub
         qty += safe_int(v["qty"], 0)
@@ -833,7 +811,8 @@ def guest_menu(
 
     bill = build_bill_from_orders(orders_raw, menu_rows)
 
-    latest_inv = db_get_latest_invoice_for_table(table_uuid)
+    # ✅ FIX: lọc theo restaurant_id + table_id
+    latest_inv = db_get_latest_invoice_for_table(real_restaurant_id, table_uuid)
     ps = (latest_inv.get("payment_status") or "").lower() if latest_inv else ""
     bill_requested = bool(latest_inv) and (ps in ("unpaid", "paid"))
     bill_paid = bool(latest_inv) and (ps == "paid")
@@ -1001,7 +980,8 @@ def request_bill(request: Request, restaurant_id: str, branch_id: str, table_nam
             status_code=HTTP_302_FOUND,
         )
 
-    latest_inv = db_get_latest_invoice_for_table(table_uuid)
+    # ✅ FIX: lọc theo restaurant_id + table_id
+    latest_inv = db_get_latest_invoice_for_table(real_restaurant_id, table_uuid)
     ps = (latest_inv.get("payment_status") or "").lower() if latest_inv else ""
     if latest_inv and ps == "unpaid":
         request.session["flash"] = "Bàn đã gọi thanh toán rồi. Vui lòng chờ thu ngân."
@@ -1019,7 +999,6 @@ def request_bill(request: Request, restaurant_id: str, branch_id: str, table_nam
         sub_total=bill["total"],
         booking_id=latest_booking_id,
         branch_id=branch_uuid,
-        tenant_id=None,
         customer_name=None,
         customer_phone=None,
         customer_email=None,
@@ -1092,7 +1071,8 @@ def orders_json(restaurant_id: str, branch_id: str, table_name: str):
 
     bill = build_bill_from_orders(orders_raw, menu_rows)
 
-    latest_inv = db_get_latest_invoice_for_table(table_uuid)
+    # ✅ FIX: lọc theo restaurant_id + table_id
+    latest_inv = db_get_latest_invoice_for_table(real_restaurant_id, table_uuid)
     ps = (latest_inv.get("payment_status") or "").lower() if latest_inv else ""
     bill_requested = bool(latest_inv) and (ps in ("unpaid", "paid"))
     bill_paid = bool(latest_inv) and (ps == "paid")
