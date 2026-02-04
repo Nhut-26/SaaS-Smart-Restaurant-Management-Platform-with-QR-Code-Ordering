@@ -1,3 +1,11 @@
+.vs/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+*.vshost.exe
+*.vshost.exe.manifest
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

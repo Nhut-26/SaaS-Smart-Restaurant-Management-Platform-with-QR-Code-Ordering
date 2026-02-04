@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+supabase
+jinja2
+python-multipart
+qrcode[pil]
+requests
+starlette
+itsdangerous

@@ -1,892 +1,1015 @@
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from starlette.middleware.sessions import SessionMiddleware
-from fastapi import Response
-from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Tuple
-from enum import Enum
-from datetime import datetime, timezone
+import os
+import json
+import re
 import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.status import HTTP_302_FOUND
+from starlette.templating import Jinja2Templates
+from postgrest.exceptions import APIError
+from supabase_client import supabase
+from qr_service import make_qr_png_advanced
 
+APP_TITLE = "S2O • Scan2Order"
+SESSION_SECRET = os.getenv("SESSION_SECRET", "dev-secret-change-me")
+DEFAULT_BRANCH_ID = "main"
 
-app = FastAPI(title="S2O • Guest QR Menu + Order Tracking + Bill")
-app.add_middleware(SessionMiddleware, secret_key="s2o-dev-secret")
-templates = Jinja2Templates(directory="templates")
+DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID")
+DEFAULT_BRANCH_UUID = os.getenv("DEFAULT_BRANCH_UUID")
 
-# True: demo auto progress trạng thái đơn theo thời gian (để thấy tracking chạy)
-DEMO_AUTO_PROGRESS = True
+TABLE_ID_MODE = "uuid"
 
-# Mốc giây kể từ lúc tạo đơn để nhảy trạng thái
-DEMO_THRESHOLDS = [
-    (10, "CONFIRMED"),
-    (25, "COOKING"),
-    (45, "READY"),
-    (70, "SERVED"),
-]
+# Default guest identity
+DEFAULT_CUSTOMER_NAME = "Khách vãng lai"
 
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+app = FastAPI(title=APP_TITLE)
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
 
-class OrderStatus(str, Enum):
-    NEW = "NEW"
-    CONFIRMED = "CONFIRMED"
-    COOKING = "COOKING"
-    READY = "READY"
-    SERVED = "SERVED"
-    CANCELLED = "CANCELLED"
+TEMPLATE_DIR = os.getenv("TEMPLATE_DIR", "templates")
+templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
-class MenuItem(BaseModel):
-    id: str
-    name: str
-    category: str
-    price: int
-    image_url: Optional[str] = None
-    description: Optional[str] = None
-    available: bool = True
+if os.path.isdir("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
-class CartItem(BaseModel):
-    item_id: str
-    qty: int = 1
-    note: Optional[str] = None
+BOOKING_PENDING = "pending"
+BOOKING_CONFIRMED = "confirmed"
+BOOKING_COMPLETED = "completed"
 
-class OrderLine(BaseModel):
-    item: MenuItem
-    qty: int
-    note: Optional[str] = None
+TABLE_AVAILABLE = "available"
+TABLE_OCCUPIED = "occupied"
 
-class Order(BaseModel):
-    id: str
-    table_id: str
-    lines: List[OrderLine]
-    total: int
-    status: OrderStatus = OrderStatus.NEW
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
+# Helpers
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-MENU: Dict[str, List[MenuItem]] = {}
+def safe_int(x: Any, default: int = 0) -> int:
+    try:
+        return int(x)
+    except Exception:
+        return default
 
-# STORAGE (in-memory)
-# key = (restaurant_id, branch_id, table_id)
-CARTS: Dict[Tuple[str, str, str], List[CartItem]] = {}
-ORDERS: Dict[Tuple[str, str, str], List[Order]] = {}
-TABLE_STATE: Dict[Tuple[str, str, str], dict] = {}
+def money(v: Any) -> int:
+    try:
+        return int(round(float(v)))
+    except Exception:
+        return 0
 
-def ensure_session_id(request: Request) -> str:
-    sid = request.session.get("sid")
-    if not sid:
-        sid = str(uuid.uuid4())
-        request.session["sid"] = sid
-    return sid
+def get_session_cart(request: Request) -> Dict[str, Dict[str, Any]]:
+    cart = request.session.get("cart")
+    if not isinstance(cart, dict):
+        cart = {}
+        request.session["cart"] = cart
+    return cart
 
-
-def table_key(restaurant_id: str, branch_id: str, table_id: str) -> Tuple[str, str, str]:
-    return (restaurant_id, branch_id, table_id)
-
-
-def get_table_state(k: Tuple[str, str, str]) -> dict:
-    st = TABLE_STATE.get(k)
-    if not st:
-        st = {
-            "bill_requested": False,
-            "bill_requested_at": None,
-            "paid": False,
-            "paid_at": None,
-        }
-        TABLE_STATE[k] = st
-    return st
-
-
-def reset_table_state(k: Tuple[str, str, str]):
-    TABLE_STATE[k] = {
-        "bill_requested": False,
-        "bill_requested_at": None,
-        "paid": False,
-        "paid_at": None,
-    }
-
-
-def get_menu(restaurant_id: str) -> List[MenuItem]:
-    return MENU.get(restaurant_id, [])
-
-
-def get_categories(restaurant_id: str) -> List[str]:
-    return sorted({m.category for m in get_menu(restaurant_id)})
-
-
-def filter_menu(items: List[MenuItem], q: str = "", category: str = "all") -> List[MenuItem]:
-    q = (q or "").strip().lower()
-    out: List[MenuItem] = []
-    for it in items:
-        if category != "all" and it.category != category:
-            continue
-        if q:
-            hay = (it.name + " " + (it.description or "")).lower()
-            if q not in hay:
-                continue
-        out.append(it)
+def cart_to_list(cart: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    for item_id, v in cart.items():
+        out.append({"item_id": item_id, "qty": int(v.get("qty", 0)), "note": v.get("note")})
+    out.sort(key=lambda x: x["item_id"])
     return out
 
+def pop_flash(request: Request) -> Optional[str]:
+    msg = request.session.get("flash")
+    if msg:
+        request.session.pop("flash", None)
+    return msg
 
-def get_cart(k: Tuple[str, str, str]) -> List[CartItem]:
-    return CARTS.setdefault(k, [])
-
-
-def get_orders(k: Tuple[str, str, str]) -> List[Order]:
-    return ORDERS.setdefault(k, [])
-
-
-def cart_totals(restaurant_id: str, k: Tuple[str, str, str]) -> Tuple[int, int]:
-    menu_map = {m.id: m for m in get_menu(restaurant_id)}
-    qty = 0
-    total = 0
-    for ci in get_cart(k):
-        it = menu_map.get(ci.item_id)
-        if it:
-            qty += ci.qty
-            total += it.price * ci.qty
-    return qty, total
-
-
-def upsert_cart_item(k: Tuple[str, str, str], item_id: str, delta: int):
-    cart = get_cart(k)
-    for ci in cart:
-        if ci.item_id == item_id:
-            ci.qty = max(0, ci.qty + delta)
-            if ci.qty == 0:
-                cart.remove(ci)
-            return
-    if delta > 0:
-        cart.append(CartItem(item_id=item_id, qty=delta))
-
-
-def set_note(k: Tuple[str, str, str], item_id: str, note: str):
-    cart = get_cart(k)
-    for ci in cart:
-        if ci.item_id == item_id:
-            ci.note = (note or "").strip() or None
-            return
-
-
-def compute_bill_from_orders(orders: List[Order]) -> Tuple[int, int, List[dict]]:
+def table_status_to_ui(st: str) -> str:
     """
-    Bill = tổng tất cả món đã đặt (từ Orders), KHÔNG phụ thuộc SERVED hay chưa.
-    Chỉ loại CANCELLED.
-    Group theo (item_id, note).
+    UI states: billing | occupied | empty
+    tables.status chỉ có available|occupied.
+    billing được suy ra riêng từ invoices (unpaid).
     """
-    agg: Dict[Tuple[str, str], dict] = {}
-    qty_total = 0
-    total = 0
-
-    for o in orders:
-        if o.status == OrderStatus.CANCELLED:
-            continue
-        for ln in o.lines:
-            note = ln.note or ""
-            key = (ln.item.id, note)
-            if key not in agg:
-                agg[key] = {
-                    "id": ln.item.id,
-                    "name": ln.item.name,
-                    "note": ln.note,
-                    "qty": 0,
-                    "unit_price": ln.item.price,
-                    "subtotal": 0,
-                }
-            agg[key]["qty"] += ln.qty
-            agg[key]["subtotal"] += ln.item.price * ln.qty
-
-            qty_total += ln.qty
-            total += ln.item.price * ln.qty
-
-    lines = sorted(agg.values(), key=lambda x: (x["name"], x["note"] or ""))
-    return qty_total, total, lines
-
-
-def table_ui_status(k: Tuple[str, str, str]) -> str:
-   
-    st = get_table_state(k)
-    orders = get_orders(k)
-    bill_qty, bill_total, _ = compute_bill_from_orders(orders)
-
-    if st.get("paid") and bill_total == 0 and not get_cart(k):
-        return "empty"
-
-    if st.get("bill_requested") and bill_total > 0 and not st.get("paid"):
-        return "billing"
-
-    if bill_total > 0 or len(get_cart(k)) > 0:
+    s = (st or "").lower()
+    if s == TABLE_OCCUPIED:
         return "occupied"
-
     return "empty"
 
-
-def request_bill_for_table(k: Tuple[str, str, str], bill_total: int) -> str:
-    st = get_table_state(k)
-    if bill_total <= 0:
-        return "Chưa có món nào để thanh toán."
-    if st.get("paid"):
-        return "Bàn này đã thanh toán rồi."
-    if st.get("bill_requested"):
-        return "Bạn đã gọi thanh toán rồi, vui lòng chờ thu ngân."
-    st["bill_requested"] = True
-    st["bill_requested_at"] = utcnow()
-    return f"Đã gửi yêu cầu thanh toán. Tổng tạm tính: {bill_total:,}VND"
+def booking_status_to_steps(status: str) -> str:
+    s = (status or "").lower().strip()
+    if s in (BOOKING_PENDING, BOOKING_CONFIRMED, BOOKING_COMPLETED):
+        return s
+    return BOOKING_PENDING
 
 
-def place_order(restaurant_id: str, k: Tuple[str, str, str], table_id: str) -> Optional[Order]:
-    cart = get_cart(k)
-    if not cart:
+_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+)
+def is_uuid(s: str) -> bool:
+    return bool(s and _UUID_RE.match(s.strip()))
+
+# DB access (Supabase)
+def _raise_db_error(e: Exception, default_msg: str = "Database error"):
+    if isinstance(e, APIError):
+        detail = None
+        try:
+            detail = e.args[0]
+        except Exception:
+            detail = str(e)
+        raise HTTPException(status_code=500, detail={"error": default_msg, "db": detail})
+    raise HTTPException(status_code=500, detail={"error": default_msg, "exception": str(e)})
+
+def db_list_tables(restaurant_id: str) -> List[Dict[str, Any]]:
+    try:
+        res = (
+            supabase.table("tables")
+            .select("*")
+            .eq("restaurant_id", restaurant_id)
+            .order("table_name")
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        _raise_db_error(e, "Cannot list tables")
+
+def db_get_table_row(restaurant_id: str, table_name: str) -> Optional[Dict[str, Any]]:
+    try:
+        res = (
+            supabase.table("tables")
+            .select("*")
+            .eq("restaurant_id", restaurant_id)
+            .eq("table_name", table_name)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        _raise_db_error(e, "Cannot get table row")
+
+def db_get_first_table_with_restaurant() -> Optional[Dict[str, Any]]:
+    try:
+        res = (
+            supabase.table("tables")
+            .select("restaurant_id, id, table_name")
+            .not_.is_("restaurant_id", "null")
+            .order("table_name")
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        _raise_db_error(e, "Cannot get first table")
+
+def db_get_first_table_any_restaurant() -> Optional[Dict[str, Any]]:
+    try:
+        res = (
+            supabase.table("tables")
+            .select("restaurant_id, id, table_name")
+            .order("table_name")
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        _raise_db_error(e, "Cannot get first table")
+
+def db_get_restaurant_name(restaurant_id: str) -> Optional[str]:
+    try:
+        res = (
+            supabase.table("restaurants")
+            .select("name")
+            .eq("id", restaurant_id)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0].get("name") if res.data else None
+    except Exception:
         return None
 
-    # sau khi đã thanh toán sẽ lập tức reset lại 
-    st = get_table_state(k)
-    if st.get("paid"):
-        reset_table_state(k)
+def db_get_menu_items(restaurant_id: str, q: str, category: str) -> List[Dict[str, Any]]:
+    try:
+        query = supabase.table("menus").select("*").eq("restaurant_id", restaurant_id)
+        if q:
+            query = query.ilike("food_name", f"%{q}%")
+        if category and category != "all":
+            query = query.eq("category", category)
+        query = (
+            query
+            .order("is_available", desc=True)
+            .order("is_best_seller", desc=True)
+            .order("food_name")
+        )
+        res = query.execute()
+        return res.data or []
+    except Exception as e:
+        _raise_db_error(e, "Cannot list menu items")
 
-    menu_map = {m.id: m for m in get_menu(restaurant_id)}
-    lines: List[OrderLine] = []
+def db_list_categories(restaurant_id: str) -> List[str]:
+    try:
+        res = supabase.table("menus").select("category").eq("restaurant_id", restaurant_id).execute()
+        cats = []
+        for r in (res.data or []):
+            c = (r.get("category") or "").strip()
+            if c:
+                cats.append(c)
+        seen = set()
+        out = []
+        for c in cats:
+            if c not in seen:
+                seen.add(c)
+                out.append(c)
+        return out
+    except Exception as e:
+        _raise_db_error(e, "Cannot list categories")
+
+def db_get_branch_uuid_by_code_or_name(restaurant_id: str, branch_key: str) -> Optional[str]:
+    if not branch_key:
+        return None
+
+    if is_uuid(branch_key):
+        return branch_key
+
+    if DEFAULT_BRANCH_UUID and branch_key == DEFAULT_BRANCH_ID:
+        return DEFAULT_BRANCH_UUID
+
+    def _safe_exec(fn):
+        try:
+            return fn()
+        except APIError as e:
+            detail = None
+            try:
+                detail = e.args[0] if e.args else None
+            except Exception:
+                detail = None
+
+            msg = ""
+            code = ""
+            if isinstance(detail, dict):
+                msg = str(detail.get("message") or "")
+                code = str(detail.get("code") or "")
+            if code == "42703" or ("does not exist" in msg.lower() and "column" in msg.lower()):
+                return None
+            raise
+
+    try:
+        res = _safe_exec(lambda: (
+            supabase.table("branches")
+            .select("id")
+            .eq("restaurant_id", restaurant_id)
+            .eq("code", branch_key)
+            .limit(1)
+            .execute()
+        ))
+        if res and res.data:
+            return res.data[0].get("id")
+
+        res = _safe_exec(lambda: (
+            supabase.table("branches")
+            .select("id")
+            .eq("restaurant_id", restaurant_id)
+            .eq("name", branch_key)
+            .limit(1)
+            .execute()
+        ))
+        if res and res.data:
+            return res.data[0].get("id")
+
+        return None
+    except Exception as e:
+        _raise_db_error(e, "Cannot resolve branch uuid")
+
+# Table status sync
+def db_set_table_status(table_uuid: str, status: str) -> None:
+    st = (status or "").lower().strip()
+    if st not in (TABLE_AVAILABLE, TABLE_OCCUPIED):
+        raise HTTPException(status_code=400, detail="Invalid table status")
+    try:
+        supabase.table("tables").update({"status": st}).eq("id", table_uuid).execute()
+    except Exception as e:
+        _raise_db_error(e, "Cannot update table status")
+
+# People count (booking type="visit")
+def _people_session_key(restaurant_id: str, table_uuid: str) -> str:
+    return f"people_count::{restaurant_id}::{table_uuid}"
+
+def db_get_latest_visit_for_table(restaurant_id: str, table_uuid: str) -> Optional[Dict[str, Any]]:
+    try:
+        res = (
+            supabase.table("bookings")
+            .select("*")
+            .eq("restaurant_id", restaurant_id)
+            .eq("table_id", table_uuid)
+            .eq("type", "visit")
+            .order("booking_time", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        _raise_db_error(e, "Cannot get latest visit booking")
+
+def db_upsert_visit_people_count(restaurant_id: str, table_uuid: str, people_count: int) -> Dict[str, Any]:
+    latest = db_get_latest_visit_for_table(restaurant_id, table_uuid)
+
+    if latest and latest.get("id"):
+        try:
+            res = (
+                supabase.table("bookings")
+                .update({"people_count": people_count})
+                .eq("id", latest["id"])
+                .execute()
+            )
+            return res.data[0] if res.data else latest
+        except Exception as e:
+            _raise_db_error(e, "Cannot update people_count (visit booking)")
+
+    payload = {
+        "restaurant_id": restaurant_id,
+        "table_id": table_uuid,
+        "tenant_id": None,
+        "user_id": None,
+        "phone": None,
+        "people_count": people_count,
+        "booking_time": now_iso(),
+        "status": BOOKING_CONFIRMED,
+        "type": "visit",
+        "customer_name": DEFAULT_CUSTOMER_NAME,
+    }
+
+    payload = {k: v for k, v in payload.items() if v is not None}
+
+    try:
+        res = supabase.table("bookings").insert(payload).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Insert visit booking failed")
+        return res.data[0]
+    except Exception as e:
+        _raise_db_error(e, "Insert visit booking failed")
+
+# Bookings (orders)
+def db_insert_order_as_booking(
+    restaurant_id: str,
+    table_uuid: str,
+    cart_lines: List[Dict[str, Any]],
+    cart_total: int,
+    people_count: Optional[int] = None,
+) -> Dict[str, Any]:
+    payload = {
+        "restaurant_id": restaurant_id,
+        "table_id": table_uuid,
+        "tenant_id": None,
+        "user_id": None,
+        "phone": None,
+        "people_count": people_count,
+        "booking_time": now_iso(),
+        "status": BOOKING_CONFIRMED,
+        "type": "order",
+        "customer_name": DEFAULT_CUSTOMER_NAME,
+        "order_payload": {"lines": cart_lines, "total": cart_total},
+    }
+
+    payload = {k: v for k, v in payload.items() if v is not None}
+
+    try:
+        res = supabase.table("bookings").insert(payload).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Insert booking/order failed")
+        return res.data[0]
+    except Exception as e:
+        _raise_db_error(e, "Insert booking(order) failed")
+
+def db_list_orders_for_table(restaurant_id: str, table_uuid: str) -> List[Dict[str, Any]]:
+    try:
+        res = (
+            supabase.table("bookings")
+            .select("*")
+            .eq("restaurant_id", restaurant_id)
+            .eq("table_id", table_uuid)
+            .eq("type", "order")
+            .order("booking_time", desc=True)
+            .limit(50)
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        _raise_db_error(e, "Cannot list bookings(order)")
+
+def parse_booking_lines(b: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
+    obj = b.get("order_payload")
+
+    if isinstance(obj, dict):
+        lines = obj.get("lines") if isinstance(obj.get("lines"), list) else []
+        total = obj.get("total", 0)
+        return lines, money(total)
+
+    if isinstance(obj, str) and obj.strip():
+        try:
+            j = json.loads(obj)
+            if isinstance(j, dict):
+                lines = j.get("lines") if isinstance(j.get("lines"), list) else []
+                total = j.get("total", 0)
+                return lines, money(total)
+        except Exception:
+            pass
+
+    raw = b.get("customer_name") or ""
+    if isinstance(raw, str) and raw.strip():
+        try:
+            old = json.loads(raw)
+            if isinstance(old, dict):
+                lines = old.get("lines") if isinstance(old.get("lines"), list) else []
+                total = old.get("total", 0)
+                return lines, money(total)
+        except Exception:
+            pass
+
+    return [], 0
+
+# Invoices
+def _gen_invoice_number() -> str:
+    return f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+
+def _naive_utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
+
+def db_create_invoice(
+    restaurant_id: str,
+    table_uuid: str,
+    table_name: str,
+    sub_total: int,
+    booking_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    payload = {
+        "invoice_number": _gen_invoice_number(),
+        "restaurant_id": restaurant_id,
+        "table_id": table_uuid,
+        "branch_id": branch_id,
+        "booking_id": booking_id,
+        "customer_name": DEFAULT_CUSTOMER_NAME,
+        "notes": f"{table_name} yêu cầu thanh toán",
+        "sub_total": float(money(sub_total)),
+        "discount_amount": 0,
+        "tax_amount": 0,
+        "service_fee": 0,
+        "paid_amount": 0,
+        "status": "Draft",
+        "payment_status": "unpaid",
+        "issued_at": _naive_utc_now_iso(),
+    }
+
+    try:
+        res = supabase.table("invoices").insert(payload).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Insert invoice failed")
+        return res.data[0]
+    except Exception as e:
+        _raise_db_error(e, "Insert invoice failed")
+
+def db_update_invoice_sub_total(invoice_id: str, sub_total: int, table_name: str) -> Dict[str, Any]:
+    payload = {
+        "sub_total": float(money(sub_total)),
+        "notes": f"{table_name} yêu cầu thanh toán",
+        "updated_at": _naive_utc_now_iso(),
+    }
+    try:
+        res = supabase.table("invoices").update(payload).eq("id", invoice_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Update invoice failed")
+        return res.data[0]
+    except Exception as e:
+        _raise_db_error(e, "Update invoice failed")
+
+def db_get_latest_invoice_for_table(restaurant_id: str, table_uuid: str) -> Optional[Dict[str, Any]]:
+    try:
+        res = (
+            supabase.table("invoices")
+            .select("*")
+            .eq("restaurant_id", restaurant_id)
+            .eq("table_id", table_uuid)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        _raise_db_error(e, "Cannot get latest invoice")
+
+# Business helpers
+def build_menu_view_models(menu_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    items = []
+    for r in menu_rows:
+        items.append(
+            {
+                "id": r.get("id"),
+                "name": r.get("food_name"),
+                "price": money(r.get("price")),
+                "available": bool(r.get("is_available", True)),
+                "category": r.get("category") or "",
+                "description": r.get("description") or "",
+                "image_url": r.get("image") or "",
+            }
+        )
+    return items
+
+def compute_cart_totals(
+    cart: Dict[str, Dict[str, Any]],
+    menu_rows: List[Dict[str, Any]],
+) -> Tuple[int, int, Dict[str, Any]]:
+    menu_map = {m.get("id"): m for m in menu_rows}
     total = 0
-
-    for ci in cart:
-        it = menu_map.get(ci.item_id)
-        if not it or not it.available:
+    qty = 0
+    cart_map: Dict[str, Any] = {}
+    for item_id, v in cart.items():
+        q = safe_int(v.get("qty"), 0)
+        if q <= 0:
             continue
-        lines.append(OrderLine(item=it, qty=ci.qty, note=ci.note))
-        total += it.price * ci.qty
+        m = menu_map.get(item_id)
+        price = money(m.get("price")) if m else 0
+        total += price * q
+        qty += q
+        cart_map[item_id] = {"qty": q, "note": v.get("note")}
+    return total, qty, cart_map
 
-    if not lines:
-        return None
+def build_bill_from_orders(orders: List[Dict[str, Any]], menu_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    menu_map = {m.get("id"): m for m in menu_rows}
+    agg: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    total = 0
+    qty = 0
 
-    now = utcnow()
-    order = Order(
-        id=str(uuid.uuid4())[:8],
-        table_id=table_id,
-        lines=lines,
-        total=total,
-        status=OrderStatus.NEW,
-        created_at=now,
-        updated_at=now,
+    for b in orders:
+        lines, _ = parse_booking_lines(b)
+        for ln in lines:
+            item_id = ln.get("item_id")
+            q = safe_int(ln.get("qty"), 0)
+            note = (ln.get("note") or "").strip()
+            if q <= 0 or not item_id:
+                continue
+            m = menu_map.get(item_id, {})
+            name = m.get("food_name") or "Unknown"
+            unit = money(m.get("price"))
+            key = (item_id, note)
+            if key not in agg:
+                agg[key] = {"name": name, "unit_price": unit, "qty": 0, "note": note}
+            agg[key]["qty"] += q
+
+    lines_out = []
+    for _, v in agg.items():
+        sub = money(v["unit_price"]) * safe_int(v["qty"], 0)
+        lines_out.append(
+            {
+                "name": v["name"],
+                "unit_price": money(v["unit_price"]),
+                "qty": safe_int(v["qty"], 0),
+                "subtotal": sub,
+                "note": v.get("note") or "",
+            }
+        )
+        total += sub
+        qty += safe_int(v["qty"], 0)
+
+    lines_out.sort(key=lambda x: (x["name"], x["note"]))
+    return {"total": total, "qty": qty, "lines": lines_out}
+
+# Routes
+@app.get("/health")
+def health():
+    return {"ok": True, "time": now_iso()}
+
+@app.get("/favicon.ico")
+def favicon():
+    return JSONResponse({"ok": True})
+
+@app.get("/")
+def home():
+    first = db_get_first_table_with_restaurant()
+    if not first:
+        first = db_get_first_table_any_restaurant()
+
+    if not first or not first.get("restaurant_id"):
+        return HTMLResponse(
+            "<h3>Thiếu dữ liệu restaurant_id</h3>"
+            "<p>Bảng tables của bạn đang có nhiều row restaurant_id = NULL. "
+            "Hãy đảm bảo bàn bạn muốn dùng có restaurant_id.</p>"
+        )
+
+    restaurant_id = first["restaurant_id"]
+    table_name = first["table_name"] or "Bàn 1"
+
+    return RedirectResponse(
+        url=f"/g/{restaurant_id}/{DEFAULT_BRANCH_ID}/tables/{table_name}",
+        status_code=HTTP_302_FOUND
     )
 
-    # Nếu đã gọi thanh toán mà lại đặt thêm => reset bill_requested để gọi lại
-    st["bill_requested"] = False
-    st["bill_requested_at"] = None
-    st["paid"] = False
-    st["paid_at"] = None
+# Tạo QR
+@app.get("/g/{restaurant_id}/{branch_id}/tables/{table_name}/qr.png")
+def qr_png(request: Request, restaurant_id: str, branch_id: str, table_name: str):
+    base = str(request.base_url).rstrip("/")
+    share_url = f"{base}/g/{restaurant_id}/{branch_id}/tables/{table_name}"
+    png = make_qr_png_advanced(share_url, box_size=10, border=2)
+    return Response(content=png, media_type="image/png")
 
-    ORDERS.setdefault(k, []).insert(0, order)
-    CARTS[k] = []
-    return order
+# Set people_count (booking type="visit")
+@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/people/set")
+def set_people(request: Request, restaurant_id: str, branch_id: str, table_name: str, people_count: int = Form(...)):
+    tbl = db_get_table_row(restaurant_id, table_name)
+    if not tbl:
+        raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
 
+    table_uuid = tbl.get("id")
+    if not table_uuid:
+        raise HTTPException(status_code=500, detail="Table id missing")
 
-def set_order_status(o: Order, status: OrderStatus):
-    o.status = status
-    o.updated_at = utcnow()
+    pc = safe_int(people_count, 0)
+    if pc <= 0 or pc > 50:
+        request.session["flash"] = "Số người không hợp lệ."
+        return RedirectResponse(
+            url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}",
+            status_code=HTTP_302_FOUND,
+        )
 
+    request.session[_people_session_key(restaurant_id, table_uuid)] = pc
+    db_upsert_visit_people_count(restaurant_id, table_uuid, pc)
 
-def maybe_demo_progress(o: Order):
-    if o.status in (OrderStatus.CANCELLED, OrderStatus.SERVED):
-        return
-    age = (utcnow() - o.created_at).total_seconds()
-    target = None
-    for sec, st in DEMO_THRESHOLDS:
-        if age >= sec:
-            target = st
-    if not target:
-        return
-    try:
-        new_status = OrderStatus(target)
-    except Exception:
-        return
-    if o.status != new_status:
-        o.status = new_status
-        o.updated_at = utcnow()
+    # có khách => occupied
+    db_set_table_status(table_uuid, TABLE_OCCUPIED)
 
+    request.session["flash"] = f"Đã lưu số người: {pc}"
+    return RedirectResponse(
+        url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}",
+        status_code=HTTP_302_FOUND,
+    )
 
-def redirect_back(request: Request, fallback: str) -> RedirectResponse:
-    ref = request.headers.get("referer")
-    return RedirectResponse(url=ref or fallback, status_code=303)
-
-@app.get("/", response_class=HTMLResponse)
-def root():
-    return RedirectResponse(url="/g/res_001/b1/tables/T01")
-
-
-@app.get("/g/{restaurant_id}/{branch_id}/tables/{table_id}", response_class=HTMLResponse)
-def guest_page(
+@app.get("/g/{restaurant_id}/{branch_id}/tables/{table_name}", response_class=HTMLResponse)
+def guest_menu(
     request: Request,
     restaurant_id: str,
     branch_id: str,
-    table_id: str,
+    table_name: str,
     q: str = "",
     category: str = "all",
 ):
-    ensure_session_id(request)
-    k = table_key(restaurant_id, branch_id, table_id)
+    tbl = db_get_table_row(restaurant_id, table_name)
+    if not tbl:
+        raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
 
-    menu = get_menu(restaurant_id)
-    items = filter_menu(menu, q=q, category=category)
+    table_uuid = tbl.get("id")
+    if not table_uuid:
+        raise HTTPException(status_code=500, detail="Table id missing")
 
-    cart = get_cart(k)
-    cart_qty, cart_total = cart_totals(restaurant_id, k)
-    orders = get_orders(k)
-    cart_map = {c.item_id: c for c in cart}
+    menu_rows = db_get_menu_items(restaurant_id, q=q, category=category)
+    categories = db_list_categories(restaurant_id)
 
-    # bill summary (tổng các order)
-    bill_qty, bill_total, bill_lines = compute_bill_from_orders(orders)
-    st = get_table_state(k)
+    tbl_rows = db_list_tables(restaurant_id)
+    tables = [t.get("table_name") for t in tbl_rows if t.get("table_name")]
+    table_status = {
+        t.get("table_name"): table_status_to_ui(t.get("status"))
+        for t in tbl_rows
+        if t.get("table_name")
+    }
 
-    # danh sách bàn, trạng thái bàn 
-    tables = _get_tables_for_ui(restaurant_id)
-    table_status: Dict[str, str] = {}
-    for t in tables:
-        tk = table_key(restaurant_id, branch_id, t)
-        table_status[t] = table_ui_status(tk)
+    cart = get_session_cart(request)
+    cart_total, cart_qty, cart_map = compute_cart_totals(cart, menu_rows)
 
-    restaurant_name = _get_restaurant_name_for_ui(restaurant_id)
- 
-    return templates.TemplateResponse(
-        "guest_menu.html",
-        {
-            "request": request,
-            "restaurant_id": restaurant_id,
-            "branch_id": branch_id,
-            "table_id": table_id,
-            "tables": tables,
-            "table_status": table_status,
-            "categories": get_categories(restaurant_id),
-            "q": q,
-            "category": category,
-            "items": items,
-            "menu": menu,
-            "cart": cart,
-            "cart_map": cart_map,
-            "cart_qty": cart_qty,
-            "cart_total": cart_total,
-            "orders": orders,
-            # bill for UI
-            "bill_qty": bill_qty,
-            "bill_total": bill_total,
-            "bill_lines": bill_lines,
-            "bill_requested": bool(st.get("bill_requested")),
-            "bill_requested_at": st.get("bill_requested_at"),
-            "bill_paid": bool(st.get("paid")),
-            "bill_paid_at": st.get("paid_at"),
-            "restaurant_name": restaurant_name,
-            
-        },
+    orders_raw = db_list_orders_for_table(restaurant_id, table_uuid)
+
+    orders_vm = []
+    mm = {m.get("id"): m for m in menu_rows}
+    for o in orders_raw:
+        lines, stored_total = parse_booking_lines(o)
+        total = stored_total
+        if total <= 0 and lines:
+            t = 0
+            for ln in lines:
+                it = mm.get(ln.get("item_id"))
+                t += money(it.get("price") if it else 0) * safe_int(ln.get("qty"), 0)
+            total = t
+
+        orders_vm.append(
+            {
+                "id": o.get("id"),
+                "status": {"value": booking_status_to_steps(o.get("status"))},
+                "total": total,
+            }
+        )
+
+    bill = build_bill_from_orders(orders_raw, menu_rows)
+
+    latest_inv = db_get_latest_invoice_for_table(restaurant_id, table_uuid)
+    ps = (latest_inv.get("payment_status") or "").lower() if latest_inv else ""
+    bill_requested = bool(latest_inv) and (ps in ("unpaid", "paid"))
+    bill_paid = bool(latest_inv) and (ps == "paid")
+
+    restaurant_name = db_get_restaurant_name(restaurant_id)
+
+    people_key = _people_session_key(restaurant_id, table_uuid)
+    people_count = request.session.get(people_key)
+    show_people_modal = not isinstance(people_count, int) or people_count <= 0
+
+    ctx = {
+        "request": request,
+        "flash": pop_flash(request),
+
+        "restaurant_id": restaurant_id,
+        "branch_id": branch_id,
+        "restaurant_name": restaurant_name,
+        "table_id": table_name,
+
+        "q": q,
+        "category": category,
+
+        "menu": menu_rows,
+        "items": build_menu_view_models(menu_rows),
+        "categories": categories,
+
+        "tables": tables,
+        "table_status": table_status,
+
+        "cart": cart_to_list(cart_map),
+        "cart_map": cart_map,
+        "cart_total": cart_total,
+        "cart_qty": cart_qty,
+
+        "orders": orders_vm,
+
+        "bill_total": bill["total"],
+        "bill_qty": bill["qty"],
+        "bill_lines": bill["lines"],
+        "bill_requested": bill_requested,
+        "bill_paid": bill_paid,
+
+        "people_count": people_count if isinstance(people_count, int) else 0,
+        "show_people_modal": show_people_modal,
+    }
+    return templates.TemplateResponse("guest_menu.html", ctx)
+
+# Cart ops
+@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/cart/add")
+def cart_add(request: Request, restaurant_id: str, branch_id: str, table_name: str, item_id: str = Form(...)):
+    cart = get_session_cart(request)
+    cur = cart.get(item_id, {"qty": 0, "note": ""})
+    cur["qty"] = safe_int(cur.get("qty"), 0) + 1
+    cart[item_id] = cur
+    request.session["cart"] = cart
+    return RedirectResponse(url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}", status_code=HTTP_302_FOUND)
+
+@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/cart/sub")
+def cart_sub(request: Request, restaurant_id: str, branch_id: str, table_name: str, item_id: str = Form(...)):
+    cart = get_session_cart(request)
+    if item_id in cart:
+        cur = cart[item_id]
+        q = safe_int(cur.get("qty"), 0) - 1
+        if q <= 0:
+            cart.pop(item_id, None)
+        else:
+            cur["qty"] = q
+            cart[item_id] = cur
+    request.session["cart"] = cart
+    return RedirectResponse(url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}", status_code=HTTP_302_FOUND)
+
+@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/cart/note")
+def cart_note(request: Request, restaurant_id: str, branch_id: str, table_name: str, item_id: str = Form(...), note: str = Form("")):
+    cart = get_session_cart(request)
+    cur = cart.get(item_id, {"qty": 0, "note": ""})
+    cur["note"] = (note or "").strip()
+    cart[item_id] = cur
+    request.session["cart"] = cart
+    return RedirectResponse(
+        url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}#orders-section",
+        status_code=HTTP_302_FOUND,
     )
 
-@app.get("/favicon.ico", include_in_schema=False)
-def favicon():
-    return Response(status_code=204)
-# API: orders, bill
-@app.get("/g/{restaurant_id}/{branch_id}/tables/{table_id}/orders/json")
-def orders_json(request: Request, restaurant_id: str, branch_id: str, table_id: str):
-    ensure_session_id(request)
-    k = table_key(restaurant_id, branch_id, table_id)
-    orders = get_orders(k)
+@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/cart/clear")
+def cart_clear(request: Request, restaurant_id: str, branch_id: str, table_name: str):
+    request.session["cart"] = {}
+    request.session["flash"] = "Đã xoá giỏ hàng."
+    return RedirectResponse(url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}", status_code=HTTP_302_FOUND)
 
-    if DEMO_AUTO_PROGRESS:
-        for o in orders:
-            maybe_demo_progress(o)
+# Place order (SCAN TẠI BÀN) -> KHÔNG CHẶN occupied
+@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/order/place")
+def place_order(request: Request, restaurant_id: str, branch_id: str, table_name: str):
+    tbl = db_get_table_row(restaurant_id, table_name)
+    if not tbl:
+        raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
 
-    bill_qty, bill_total, bill_lines = compute_bill_from_orders(orders)
-    st = get_table_state(k)
+    table_uuid = tbl.get("id")
+    if not table_uuid:
+        raise HTTPException(status_code=500, detail="Table id missing")
 
-    payload = {
-        "server_time": utcnow(),
-        "orders": [
-            {
-                "id": o.id,
-                "table_id": o.table_id,
-                "status": o.status,
-                "total": o.total,
-                "created_at": o.created_at,
-                "updated_at": o.updated_at,
-                "lines": [{"name": ln.item.name, "qty": ln.qty, "note": ln.note} for ln in o.lines],
-            }
-            for o in orders
-        ],
-        "bill": {
-            "qty": bill_qty,
-            "total": bill_total,
-            "lines": bill_lines,
-            "requested": bool(st.get("bill_requested")),
-            "requested_at": st.get("bill_requested_at"),
-            "paid": bool(st.get("paid")),
-            "paid_at": st.get("paid_at"),
-        },
-    }
-    return JSONResponse(content=jsonable_encoder(payload))
+    cart = get_session_cart(request)
+    cart_list = cart_to_list(cart)
+    if not cart_list:
+        return RedirectResponse(url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}", status_code=HTTP_302_FOUND)
 
+    menu_rows = db_get_menu_items(restaurant_id, q="", category="all")
+    mm = {m.get("id"): m for m in menu_rows}
+    cart_total = 0
+    for ln in cart_list:
+        it = mm.get(ln["item_id"])
+        cart_total += money(it.get("price") if it else 0) * safe_int(ln["qty"], 0)
 
-#  API: table status
-@app.get("/g/{restaurant_id}/{branch_id}/tables/status/json")
-def tables_status_json(request: Request, restaurant_id: str, branch_id: str):
-    ensure_session_id(request)
-    tables = _get_tables_for_ui(restaurant_id)
-    mp: Dict[str, str] = {}
-    for t in tables:
-        k = table_key(restaurant_id, branch_id, t)
-        mp[t] = table_ui_status(k)
-    return JSONResponse(content=jsonable_encoder({"server_time": utcnow(), "tables": mp}))
+    people_key = _people_session_key(restaurant_id, table_uuid)
+    pc = request.session.get(people_key)
+    pc = pc if isinstance(pc, int) and pc > 0 else None
 
-# Cart
-@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_id}/cart/add", response_class=HTMLResponse)
-def cart_add(request: Request, restaurant_id: str, branch_id: str, table_id: str, item_id: str = Form(...)):
-    ensure_session_id(request)
-    k = table_key(restaurant_id, branch_id, table_id)
-    upsert_cart_item(k, item_id, +1)
-    return redirect_back(request, f"/g/{restaurant_id}/{branch_id}/tables/{table_id}")
+    _ = db_insert_order_as_booking(
+        restaurant_id=restaurant_id,
+        table_uuid=table_uuid,
+        cart_lines=cart_list,
+        cart_total=cart_total,
+        people_count=pc,
+    )
 
-@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_id}/cart/sub", response_class=HTMLResponse)
-def cart_sub(request: Request, restaurant_id: str, branch_id: str, table_id: str, item_id: str = Form(...)):
-    ensure_session_id(request)
-    k = table_key(restaurant_id, branch_id, table_id)
-    upsert_cart_item(k, item_id, -1)
-    return redirect_back(request, f"/g/{restaurant_id}/{branch_id}/tables/{table_id}")
+    # confirmed => occupied
+    db_set_table_status(table_uuid, TABLE_OCCUPIED)
 
-@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_id}/cart/note", response_class=HTMLResponse)
-def cart_note(
-    request: Request,
-    restaurant_id: str,
-    branch_id: str,
-    table_id: str,
-    item_id: str = Form(...),
-    note: str = Form(""),
-):
-    ensure_session_id(request)
-    k = table_key(restaurant_id, branch_id, table_id)
-    set_note(k, item_id, note)
-    return redirect_back(request, f"/g/{restaurant_id}/{branch_id}/tables/{table_id}")
+    request.session["cart"] = {}
+    request.session["flash"] = "Đã đặt món thành công."
+    return RedirectResponse(
+        url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}#orders-section",
+        status_code=HTTP_302_FOUND,
+    )
 
+# Request bill
+@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/bill/request")
+def request_bill(request: Request, restaurant_id: str, branch_id: str, table_name: str):
+    tbl = db_get_table_row(restaurant_id, table_name)
+    if not tbl:
+        raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
 
-# Order place
-@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_id}/order/place", response_class=HTMLResponse)
-def order_place(request: Request, restaurant_id: str, branch_id: str, table_id: str):
-    ensure_session_id(request)
-    k = table_key(restaurant_id, branch_id, table_id)
-    o = place_order(restaurant_id, k, table_id)
-    request.session["flash"] = "Đặt món thành công." if o else "Giỏ trống hoặc món không khả dụng."
-    return RedirectResponse(url=f"/g/{restaurant_id}/{branch_id}/tables/{table_id}#orders-section", status_code=303)
+    table_uuid = tbl.get("id")
+    if not table_uuid:
+        raise HTTPException(status_code=500, detail="Table id missing")
 
+    menu_rows = db_get_menu_items(restaurant_id, q="", category="all")
+    orders_raw = db_list_orders_for_table(restaurant_id, table_uuid)
+    bill = build_bill_from_orders(orders_raw, menu_rows)
 
-#  Bill request
-@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_id}/bill/request", response_class=HTMLResponse)
-def bill_request(request: Request, restaurant_id: str, branch_id: str, table_id: str):
-    ensure_session_id(request)
-    k = table_key(restaurant_id, branch_id, table_id)
-    orders = get_orders(k)
-    _, bill_total, _ = compute_bill_from_orders(orders)
-    request.session["flash"] = request_bill_for_table(k, bill_total)
-    return RedirectResponse(url=f"/g/{restaurant_id}/{branch_id}/tables/{table_id}#bill-section", status_code=303)
+    if bill["total"] <= 0:
+        request.session["flash"] = "Bàn chưa có món để thanh toán."
+        return RedirectResponse(
+            url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}#bill-section",
+            status_code=HTTP_302_FOUND,
+        )
 
+    latest_inv = db_get_latest_invoice_for_table(restaurant_id, table_uuid)
+    ps = (latest_inv.get("payment_status") or "").lower() if latest_inv else ""
 
-@app.post("/staff/{restaurant_id}/{branch_id}/tables/{table_id}/orders/{order_id}/status")
-def staff_set_status(
-    request: Request,
-    restaurant_id: str,
-    branch_id: str,
-    table_id: str,
-    order_id: str,
-    status: OrderStatus = Form(...),
-):
-    ensure_session_id(request)
-    k = table_key(restaurant_id, branch_id, table_id)
-    orders = get_orders(k)
+    if latest_inv and ps == "unpaid":
+        _ = db_update_invoice_sub_total(
+            invoice_id=latest_inv["id"],
+            sub_total=bill["total"],
+            table_name=table_name,
+        )
+        request.session["flash"] = "Đã cập nhật hóa đơn theo món mới nhất. Vui lòng chờ thu ngân."
+        return RedirectResponse(
+            url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}#bill-section",
+            status_code=HTTP_302_FOUND,
+        )
 
-    for o in orders:
-        if o.id == order_id:
-            set_order_status(o, status)
-            return {"ok": True, "order": jsonable_encoder(o)}
+    latest_booking_id = orders_raw[0].get("id") if orders_raw else None
+    branch_uuid = db_get_branch_uuid_by_code_or_name(restaurant_id, branch_id)
 
-    return JSONResponse(status_code=404, content={"ok": False, "error": "Order not found"})
+    _inv = db_create_invoice(
+        restaurant_id=restaurant_id,
+        table_uuid=table_uuid,
+        table_name=table_name,
+        sub_total=bill["total"],
+        booking_id=latest_booking_id,
+        branch_id=branch_uuid,
+    )
 
+    request.session["flash"] = "Đã tạo hóa đơn. Vui lòng chờ thu ngân."
+    return RedirectResponse(
+        url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}#bill-section",
+        status_code=HTTP_302_FOUND,
+    )
 
-@app.post("/staff/{restaurant_id}/{branch_id}/tables/{table_id}/bill/paid")
-def staff_bill_paid(request: Request, restaurant_id: str, branch_id: str, table_id: str):
-   
-    ensure_session_id(request)
-    k = table_key(restaurant_id, branch_id, table_id)
-    st = get_table_state(k)
+# Complete table: completed => available
+@app.post("/g/{restaurant_id}/{branch_id}/tables/{table_name}/complete")
+def complete_table(request: Request, restaurant_id: str, branch_id: str, table_name: str):
+    tbl = db_get_table_row(restaurant_id, table_name)
+    if not tbl:
+        raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
 
-    st["paid"] = True
-    st["paid_at"] = utcnow()
-    st["bill_requested"] = False
-    st["bill_requested_at"] = None
+    table_uuid = tbl.get("id")
+    if not table_uuid:
+        raise HTTPException(status_code=500, detail="Table id missing")
 
-    ORDERS[k] = []
-    CARTS[k] = []
-    return {"ok": True, "table_id": table_id}
-
-
-@app.middleware("http")
-async def flash_middleware(request: Request, call_next):
-    response = await call_next(request)
-    return response
-
-# Liên kết supabase
-def _load_supabase_config() -> Tuple[Optional[str], Optional[str]]:
-  
     try:
-        from supabase_client import SUPABASE_URL as _URL, SUPABASE_SERVICE_KEY as _KEY  # type: ignore
-        return _URL, _KEY
+        supabase.table("bookings").update({"status": BOOKING_COMPLETED}) \
+            .eq("restaurant_id", restaurant_id) \
+            .eq("table_id", table_uuid) \
+            .in_("type", ["visit", "order"]) \
+            .neq("status", BOOKING_COMPLETED) \
+            .execute()
     except Exception:
         pass
 
-    try:
-        import re
-        from pathlib import Path
+    db_set_table_status(table_uuid, TABLE_AVAILABLE)
 
-        p = Path(__file__).with_name("supabase_client.py")
-        txt = p.read_text(encoding="utf-8")
-
-        m_url = re.search(r"\bSUPABASE_URL\s*=\s*['\"]([^'\"]+)['\"]", txt)
-        m_key = re.search(r"\bSUPABASE_SERVICE_KEY\s*=\s*['\"]([^'\"]+)['\"]", txt)
-
-        return (
-            m_url.group(1) if m_url else None,
-            m_key.group(1) if m_key else None,
-        )
-    except Exception:
-        return None, None
-
-
-_SUPABASE_URL, _SUPABASE_KEY = _load_supabase_config()
-
-
-def _looks_like_uuid(s: str) -> bool:
-    try:
-        uuid.UUID(str(s))
-        return True
-    except Exception:
-        return False
-
-
-def _sb_select(
-    table: str,
-    *,
-    select: str = "*",
-    eq_filters: Optional[Dict[str, str]] = None,
-    order: Optional[str] = None,
-    limit: Optional[int] = None,
-) -> List[dict]:
-    if not _SUPABASE_URL or not _SUPABASE_KEY:
-        return []
-
-    import requests
-
-    params: Dict[str, str] = {"select": select}
-    if eq_filters:
-        for k, v in eq_filters.items():
-            if v is None:
-                continue
-            params[k] = f"eq.{v}"
-    if order:
-        params["order"] = order
-    if limit is not None:
-        params["limit"] = str(limit)
-
-    headers = {
-        "apikey": _SUPABASE_KEY,
-        "Authorization": f"Bearer {_SUPABASE_KEY}",
-        "Accept": "application/json",
-    }
-
-    url = f"{_SUPABASE_URL.rstrip('/')}/rest/v1/{table}"
-
-    try:
-        res = requests.get(url, headers=headers, params=params, timeout=10)
-        res.raise_for_status()
-        data = res.json()
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
-
-
-def _get_tables_for_ui(restaurant_id: str) -> List[str]:
-    filters = {"restaurant_id": restaurant_id} if _looks_like_uuid(restaurant_id) else None
-    rows = _sb_select(
-        "tables",
-        select="table_name",
-        eq_filters=filters,
-        order="table_name.asc",
-        limit=500,
+    request.session["flash"] = "Đã trả bàn."
+    return RedirectResponse(
+        url=f"/g/{restaurant_id}/{branch_id}/tables/{table_name}",
+        status_code=HTTP_302_FOUND,
     )
 
-    out: List[str] = []
-    for r in rows:
-        name = r.get("table_name")
-        if name:
-            out.append(str(name))
-    return out
+# JSON endpoints
+@app.get("/g/{restaurant_id}/{branch_id}/tables/{table_name}/orders/json")
+def orders_json(restaurant_id: str, branch_id: str, table_name: str):
+    tbl = db_get_table_row(restaurant_id, table_name)
+    if not tbl:
+        raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
 
+    table_uuid = tbl.get("id")
+    if not table_uuid:
+        raise HTTPException(status_code=500, detail="Table id missing")
 
-def _get_menu_from_supabase(restaurant_id: str) -> List[MenuItem]:
-    filters = {"restaurant_id": restaurant_id} if _looks_like_uuid(restaurant_id) else None
+    menu_rows = db_get_menu_items(restaurant_id, q="", category="all")
+    orders_raw = db_list_orders_for_table(restaurant_id, table_uuid)
 
-    rows = _sb_select(
-        "menus",
-        select="id,restaurant_id,food_name,category,price,is_available,description",
-        eq_filters=filters,
-        order="category.asc,food_name.asc",
-        limit=500,
-    )
+    mm = {m.get("id"): m for m in menu_rows}
+    orders = []
+    for o in orders_raw:
+        lines, stored_total = parse_booking_lines(o)
+        line_items = []
 
-    out: List[MenuItem] = []
-    for r in rows:
-        # Supabase numeric thường trả về string, ép về int an toàn
-        raw_price = r.get("price", 0)
-        try:
-            price_int = int(float(raw_price))
-        except Exception:
-            price_int = 0
+        total = stored_total
+        if total <= 0 and lines:
+            total_calc = 0
+            for ln in lines:
+                it = mm.get(ln.get("item_id"))
+                total_calc += money(it.get("price") if it else 0) * safe_int(ln.get("qty"), 0)
+            total = total_calc
 
-        out.append(
-            MenuItem(
-                id=str(r.get("id", "")),
-                name=str(r.get("food_name", "")),
-                category=str(r.get("category") or "Khác"),
-                price=price_int,
-                description=r.get("description"),
-                available=bool(r.get("is_available", True)),
-                image_url=None,
+        for ln in lines:
+            it = mm.get(ln.get("item_id"), {})
+            line_items.append(
+                {
+                    "name": it.get("food_name") or "Unknown",
+                    "qty": safe_int(ln.get("qty"), 0),
+                    "note": (ln.get("note") or "").strip(),
+                }
             )
+
+        orders.append(
+            {
+                "id": o.get("id"),
+                "status": booking_status_to_steps(o.get("status")),
+                "total": total,
+                "updated_at": o.get("booking_time") or o.get("updated_at") or None,
+                "lines": line_items,
+            }
         )
 
-    return out
+    bill = build_bill_from_orders(orders_raw, menu_rows)
 
-try:
-    MENU.clear()
-except Exception:
-    pass
+    latest_inv = db_get_latest_invoice_for_table(restaurant_id, table_uuid)
+    ps = (latest_inv.get("payment_status") or "").lower() if latest_inv else ""
+    bill_requested = bool(latest_inv) and (ps in ("unpaid", "paid"))
+    bill_paid = bool(latest_inv) and (ps == "paid")
 
-try:
-    from functools import lru_cache
-
-    _get_menu_from_supabase = lru_cache(maxsize=128)(_get_menu_from_supabase)
-    _get_tables_for_ui = lru_cache(maxsize=128)(_get_tables_for_ui)
-except Exception:
-    pass
-get_menu = _get_menu_from_supabase
-
-def _sb_select_params(table: str, *, params: Dict[str, str]) -> List[dict]:
-    """
-    Select linh hoạt cho Supabase REST: cho phép truyền thẳng params như:
-    - {"menu_id": "in.(...)"}
-    - {"tenant_id": "eq.<uuid>"}
-    """
-    if not _SUPABASE_URL or not _SUPABASE_KEY:
-        return []
-    import requests
-
-    headers = {
-        "apikey": _SUPABASE_KEY,
-        "Authorization": f"Bearer {_SUPABASE_KEY}",
-        "Accept": "application/json",
-    }
-    url = f"{_SUPABASE_URL.rstrip('/')}/rest/v1/{table}"
-    try:
-        res = requests.get(url, headers=headers, params=params, timeout=12)
-        res.raise_for_status()
-        data = res.json()
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
-
-
-def _chunk_list(xs: List[str], n: int) -> List[List[str]]:
-    out: List[List[str]] = []
-    cur: List[str] = []
-    for x in xs:
-        cur.append(x)
-        if len(cur) >= n:
-            out.append(cur)
-            cur = []
-    if cur:
-        out.append(cur)
-    return out
-
-
-def _pick_best_image(rows: List[dict]) -> Optional[str]:
-    """
-    Ưu tiên:
-    1) is_primary = true
-    2) display_order nhỏ nhất
-    """
-    if not rows:
-        return None
-
-    def norm_bool(v) -> bool:
-        if isinstance(v, bool):
-            return v
-        s = str(v).strip().lower()
-        return s in ("true", "1", "t", "yes", "y")
-
-    def norm_int(v, default=10**9) -> int:
-        try:
-            return int(v)
-        except Exception:
-            try:
-                return int(float(v))
-            except Exception:
-                return default
-
-    # sort: primary DESC, display_order ASC
-    rows2 = sorted(
-        rows,
-        key=lambda r: (
-            0 if norm_bool(r.get("is_primary", False)) else 1,
-            norm_int(r.get("display_order", 10**9)),
-        ),
-    )
-    url = rows2[0].get("image_url")
-    return str(url) if url else None
-
-
-def _get_menu_images_map_for_menu_ids(
-    restaurant_id: str,
-    menu_ids: List[str],
-) -> Dict[str, str]:
-    """
-    Return: {menu_id: best_image_url}
-    """
-    if not menu_ids:
-        return {}
-
-    # Nếu restaurant_id là UUID, thử filter tenant_id 
-    tenant_filter = None
-    if _looks_like_uuid(restaurant_id):
-        tenant_filter = f"eq.{restaurant_id}"
-
-    mp: Dict[str, List[dict]] = {}
-
-    # tránh query in.(...) quá dài
-    for chunk in _chunk_list(menu_ids, 80):
-        in_clause = "in.(" + ",".join(chunk) + ")"
-        params = {
-            "select": "menu_id,image_url,is_primary,display_order,alt_text,tenant_id",
-            "menu_id": in_clause,
-            "order": "is_primary.desc,display_order.asc",
-            "limit": "2000",
+    return JSONResponse(
+        {
+            "server_time": now_iso(),
+            "orders": orders,
+            "bill": {
+                "total": bill["total"],
+                "qty": bill["qty"],
+                "lines": bill["lines"],
+                "requested": bill_requested,
+                "paid": bill_paid,
+            },
         }
-        if tenant_filter:
-            params["tenant_id"] = tenant_filter
-
-        rows = _sb_select_params("menu_images", params=params)
-        for r in rows:
-            mid = r.get("menu_id")
-            if not mid:
-                continue
-            mp.setdefault(str(mid), []).append(r)
-
-    out: Dict[str, str] = {}
-    for mid, rows in mp.items():
-        best = _pick_best_image(rows)
-        if best:
-            out[mid] = best
-    return out
-
-
-def _get_menu_from_supabase_with_images(restaurant_id: str) -> List[MenuItem]:
-    """
-    Lấy menus + gắn ảnh từ menu_images vào MenuItem.image_url.
-    Giữ logic cũ: nếu restaurant_id không phải UUID thì bỏ filter menus.
-    """
-    filters = {"restaurant_id": restaurant_id} if _looks_like_uuid(restaurant_id) else None
-
-    rows = _sb_select(
-        "menus",
-        select="id,restaurant_id,food_name,category,price,is_available,description",
-        eq_filters=filters,
-        order="category.asc,food_name.asc",
-        limit=500,
     )
 
-    menu_ids: List[str] = []
-    out: List[MenuItem] = []
+@app.get("/g/{restaurant_id}/{branch_id}/tables/status/json")
+def tables_status_json(restaurant_id: str, branch_id: str):
+    tbl_rows = db_list_tables(restaurant_id)
 
-    for r in rows:
-        mid = str(r.get("id", "") or "")
-        if mid:
-            menu_ids.append(mid)
-
-        raw_price = r.get("price", 0)
-        try:
-            price_int = int(float(raw_price))
-        except Exception:
-            price_int = 0
-
-        out.append(
-            MenuItem(
-                id=mid,
-                name=str(r.get("food_name", "")),
-                category=str(r.get("category") or "Khác"),
-                price=price_int,
-                description=r.get("description"),
-                available=bool(r.get("is_available", True)),
-                image_url=None,
-            )
+    try:
+        inv = (
+            supabase.table("invoices")
+            .select("table_id,payment_status")
+            .eq("restaurant_id", restaurant_id)
+            .eq("payment_status", "unpaid")
+            .execute()
         )
+        billing_tables = {r.get("table_id") for r in (inv.data or []) if r.get("table_id")}
+    except Exception:
+        billing_tables = set()
 
-    img_map = _get_menu_images_map_for_menu_ids(restaurant_id, menu_ids)
-    for it in out:
-        it.image_url = img_map.get(it.id)
+    mp = {}
+    for t in tbl_rows:
+        tid = t.get("id")
+        name = t.get("table_name")
+        if not name or not tid:
+            continue
 
-    return out
+        if tid in billing_tables:
+            mp[name] = "billing"
+        else:
+            mp[name] = table_status_to_ui(t.get("status"))
 
+    return JSONResponse({"server_time": now_iso(), "tables": mp})
 
-def _get_restaurant_name_for_ui(restaurant_id: str) -> Optional[str]:
-    """
-    Lấy restaurants.name theo restaurants.id = restaurant_id
-    """
-    if not restaurant_id or not _looks_like_uuid(restaurant_id):
-        return None
+if __name__ == "__main__":
+    import os
+    import uvicorn
 
-    rows = _sb_select(
-        "restaurants",
-        select="id,name",
-        eq_filters={"id": restaurant_id},
-        limit=1,
-    )
-    if not rows:
-        return None
-    nm = rows[0].get("name")
-    return str(nm) if nm else None
-
-try:
-    from functools import lru_cache as _lru_cache2
-    _get_menu_from_supabase_with_images = _lru_cache2(maxsize=128)(_get_menu_from_supabase_with_images)
-    _get_restaurant_name_for_ui = _lru_cache2(maxsize=256)(_get_restaurant_name_for_ui)
-except Exception:
-    pass
-
-get_menu = _get_menu_from_supabase_with_images
-
-try:
-    from fastapi.responses import StreamingResponse
-    from io import BytesIO
-    from qr_service import make_qr_png_advanced  # type: ignore
-except Exception:
-    StreamingResponse = None  # type: ignore
-
-if StreamingResponse:
-    @app.get("/qr/{restaurant_id}/{branch_id}/tables/{table_id}.png")
-    def qr_png(restaurant_id: str, branch_id: str, table_id: str):
-        # Link đúng theo PUBLIC_BASE_URL nếu có
-        base = None
-        try:
-            import os
-            base = os.getenv("PUBLIC_BASE_URL")
-        except Exception:
-            base = None
-
-        if not base:
-            base = ""
-
-        url = (base.rstrip("/") if base else "").rstrip("/") + f"/g/{restaurant_id}/{branch_id}/tables/{table_id}"
-        png = make_qr_png_advanced(url)
-        return StreamingResponse(BytesIO(png), media_type="image/png")
+    port = int(os.getenv("PORT", "5000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

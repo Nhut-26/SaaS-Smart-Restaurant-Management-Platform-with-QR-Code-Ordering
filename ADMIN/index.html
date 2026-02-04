@@ -20,6 +20,10 @@
             <li class="menu-item" data-page="users"><i class="fas fa-users-cog"></i>Đối tác</li>
             <li class="menu-item" data-page="ai-config"><i class="fas fa-robot"></i>Cấu hình AI</li>
         </ul>
+         <div class="sidebar-bottom">
+        <span class="admin-name">Super Admin</span>
+        <button class="logout-btn">Đăng xuất</button>
+    </div>
     </aside>
 
     <div class="content-wrapper">
@@ -28,18 +32,12 @@
             <div class="user-info">Xin chào, <strong>Super Admin</strong></div>
         </header>
         <main id="content" class="main-content"></main>
-        <div class="sidebar-footer">
-        <div class="sidebar-user">
-            <i class="fas fa-user-shield"></i>
-            <span id="admin-name">Super Admin</span>
-        </div>
-
-        <button id="logout-btn" class="logout-btn">
-            <i class="fas fa-sign-out-alt"></i> Đăng xuất
-        </button>
+        
+    </div>
     </div>
 </aside>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../js/admin.js"></script>
 </body>

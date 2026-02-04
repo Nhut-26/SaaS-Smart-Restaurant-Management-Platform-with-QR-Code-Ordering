@@ -14,6 +14,23 @@
     .order-meta { font-size: .85rem; color: #6c757d; }
     .table-btn { min-width: 52px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    .qr-box {
+      width: 100%;
+      min-height: 360px;
+      background: #fff;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-img {
+      width: 240px;
+      height: 240px;
+      image-rendering: pixelated;
+    }
+
+    .people-btn { min-width: 56px; }
   </style>
 </head>
 
@@ -21,15 +38,27 @@
   <nav class="navbar bg-white border-bottom">
     <div class="container d-flex justify-content-between align-items-center">
 
-    <span class="navbar-brand mb-0 h1">
-      {% if restaurant_name %}
-        {{ restaurant_name }}
-      {% else %}
-        S2O • Scan2Order
-      {% endif %}
-    </span>
+      <span class="navbar-brand mb-0 h1">
+        {% if restaurant_name %}
+          {{ restaurant_name }}
+        {% else %}
+          S2O • Scan2Order
+        {% endif %}
+      </span>
 
       <div class="d-flex align-items-center gap-2">
+        <!-- People count button -->
+        <button class="btn btn-sm btn-outline-success"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#peopleModal">
+          {% if people_count %}
+            {{ people_count }} người
+          {% else %}
+            Chọn số người
+          {% endif %}
+        </button>
+
         <!--QR share -->
         <button class="btn btn-sm btn-outline-primary"
                 type="button"
@@ -85,7 +114,6 @@
   </nav>
 
   <main class="container my-3">
-    {% set flash = request.session.pop("flash", None) %}
     {% if flash %}
       <div class="alert alert-success">{{ flash }}</div>
     {% endif %}
@@ -196,7 +224,7 @@
                     <div class="border rounded-3 p-2 bg-white">
                       <div class="d-flex justify-content-between">
                         <div>
-                          <div class="fw-semibold">{{ it.name }}</div>
+                          <div class="fw-semibold">{{ it.food_name }}</div>
                           <div class="small-muted">{{ "{:,}".format(it.price) }}₫</div>
                         </div>
                         <div class="text-end">
@@ -238,13 +266,13 @@
           </div>
         </div>
 
-        <!-- Bill (tổng các orders) -->
+        <!-- Bill -->
         {% if bill_paid %}
           {% set bill_badge = "text-bg-success" %}
           {% set bill_label = "Đã thanh toán" %}
         {% elif bill_requested %}
           {% set bill_badge = "text-bg-danger" %}
-          {% set bill_label = "Đã gọi thanh toán" %}
+          {% set bill_label = "Chờ thanh toán" %}
         {% else %}
           {% set bill_badge = "text-bg-secondary" %}
           {% set bill_label = "Chưa gọi" %}
@@ -292,7 +320,7 @@
               {% if bill_total == 0 %}
                 Đặt món xong thì tổng sẽ hiện ở đây để gọi thanh toán.
               {% elif bill_requested %}
-                Bạn đã gọi thanh toán, vui lòng chờ thu ngân.
+                Bạn đã gọi thanh toán. Nếu gọi thêm món, bấm “Cập nhật hóa đơn” để cập nhật tổng mới nhất.
               {% else %}
                 Đây là tổng tạm tính dựa trên các đơn đã đặt (kể cả đã phục vụ).
               {% endif %}
@@ -361,11 +389,11 @@
               <button id="btn-request-bill"
                       class="btn btn-outline-primary"
                       type="submit"
-                      {% if bill_total == 0 or bill_requested or bill_paid %}disabled{% endif %}>
+                      {% if bill_total == 0 or bill_paid %}disabled{% endif %}>
                 {% if bill_paid %}
                   Đã thanh toán
                 {% elif bill_requested %}
-                  Đã gọi thanh toán
+                  Cập nhật hóa đơn
                 {% else %}
                   Gọi thanh toán
                 {% endif %}
@@ -382,6 +410,39 @@
     </div>
   </main>
 
+  <!-- People modal -->
+  <div class="modal fade" id="peopleModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Số người • {{ table_id }}</h5>
+        </div>
+        <div class="modal-body">
+          <div class="small-muted mb-2">Vui lòng chọn số người trong bàn để phục vụ tốt hơn.</div>
+
+          <form method="post" action="/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/people/set">
+            <input type="hidden" name="people_count" id="people_count_input" value="{{ people_count or 0 }}"/>
+
+            <div class="d-flex flex-wrap gap-2 mb-3" id="peopleButtons">
+              {% for n in range(1, 13) %}
+                <button type="button" class="btn btn-outline-primary people-btn" data-n="{{ n }}">{{ n }}</button>
+              {% endfor %}
+            </div>
+
+            <div class="input-group mb-3" style="max-width: 240px;">
+              <span class="input-group-text">Khác</span>
+              <input class="form-control" type="number" min="1" max="99" id="peopleCustom" placeholder="VD: 15">
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+              <button class="btn btn-primary" type="submit">Xác nhận</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- QR modal -->
   <div class="modal fade" id="qrModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -391,8 +452,9 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <div class="text-center">
-            <canvas id="qrCanvas" style="max-width: 100%;"></canvas>
+
+          <div class="qr-box">
+            <img id="qrImg" class="qr-img" alt="QR"/>
           </div>
 
           <div class="mt-3">
@@ -423,15 +485,16 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 
   <script>
     (function () {
       const ORDERS_URL = "/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/orders/json";
       const TABLES_URL = "/g/{{ restaurant_id }}/{{ branch_id }}/tables/status/json";
       const SHARE_URL = window.location.origin + "/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}";
+      const QR_URL = "/g/{{ restaurant_id }}/{{ branch_id }}/tables/{{ table_id }}/qr.png";
 
       const lastStatus = new Map();
+      let firstLoad = true;
 
       const elOrders = document.getElementById("orders-container");
       const elLastUpdated = document.getElementById("orders-last-updated");
@@ -439,15 +502,6 @@
       const btnRefresh = document.getElementById("btn-refresh");
       const autoToggle = document.getElementById("auto-refresh");
 
-      // Bill elements
-      const elBillTotal = document.getElementById("bill-total");
-      const elBillQty = document.getElementById("bill-qty");
-      const elBillLines = document.getElementById("bill-lines");
-      const elBillStatus = document.getElementById("bill-status");
-      const elStickyBill = document.getElementById("sticky-bill-text");
-      const btnBill = document.getElementById("btn-request-bill");
-
-      //  Toast 
       function showToast(msg) {
         const toastEl = document.getElementById("statusToast");
         const bodyEl = document.getElementById("statusToastBody");
@@ -456,17 +510,11 @@
         t.show();
       }
 
-      //  Helpers 
       function fmtTime(iso) {
         if (!iso) return "";
         const d = new Date(iso);
         if (isNaN(d.getTime())) return "";
         return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      }
-
-      function fmtMoney(n) {
-        const x = Number(n || 0);
-        return x.toLocaleString("vi-VN") + "₫";
       }
 
       function escapeHtml(s) {
@@ -477,20 +525,18 @@
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#039;");
       }
-
+      
       function statusMeta(s) {
-        switch (s) {
-          case "NEW": return { label: "Mới đặt", badge: "text-bg-secondary", step: 0 };
-          case "CONFIRMED": return { label: "Đã xác nhận", badge: "text-bg-primary", step: 1 };
-          case "COOKING": return { label: "Đang chuẩn bị", badge: "text-bg-warning", step: 2 };
-          case "READY": return { label: "Sẵn sàng", badge: "text-bg-success", step: 3 };
-          case "SERVED": return { label: "Đã phục vụ", badge: "text-bg-success", step: 4 };
-          case "CANCELLED": return { label: "Đã huỷ", badge: "text-bg-danger", step: -1 };
-          default: return { label: String(s || ""), badge: "text-bg-info", step: -1 };
+        const v = String(s || "").toLowerCase();
+        switch (v) {
+          case "pending":   return { label: "Chờ xác nhận", badge: "text-bg-secondary", step: 0 };
+          case "confirmed": return { label: "Đã xác nhận", badge: "text-bg-primary", step: 1 };
+          case "completed": return { label: "Đã trả bàn",   badge: "text-bg-success", step: 2 };
+          default:          return { label: String(s || ""), badge: "text-bg-info", step: -1 };
         }
       }
 
-      const steps = ["Mới", "Xác nhận", "Đang làm", "Sẵn sàng", "Phục vụ"];
+      const steps = ["Chờ xác nhận", "Đã xác nhận", "Đã trả bàn"];
 
       function renderSteps(currentStatus) {
         const meta = statusMeta(currentStatus);
@@ -530,37 +576,6 @@
         `;
       }
 
-      function billStatusMeta(bill) {
-        if (bill && bill.paid) return { label: "Đã thanh toán", badge: "text-bg-success" };
-        if (bill && bill.requested) return { label: "Đã gọi thanh toán", badge: "text-bg-danger" };
-        if (bill && Number(bill.total || 0) > 0) return { label: "Chưa gọi", badge: "text-bg-secondary" };
-        return { label: "Chưa có món", badge: "text-bg-secondary" };
-      }
-
-      function renderBillLines(lines) {
-        if (!Array.isArray(lines) || lines.length === 0) {
-          return `<div class="text-muted">Chưa có món đã đặt.</div>`;
-        }
-        return `
-          <div class="vstack gap-2">
-            ${lines.map(ln => {
-              const note = ln.note ? `<div class="small-muted">“${escapeHtml(ln.note)}”</div>` : "";
-              return `
-                <div class="d-flex justify-content-between">
-                  <div>
-                    <div class="fw-semibold">${escapeHtml(ln.name)}</div>
-                    ${note}
-                    <div class="small-muted">${fmtMoney(ln.unit_price)} x${ln.qty}</div>
-                  </div>
-                  <div class="fw-semibold">${fmtMoney(ln.subtotal)}</div>
-                </div>
-              `;
-            }).join("")}
-          </div>
-        `;
-      }
-
-      //  Refresh orders, bill 
       async function refreshOrders() {
         try {
           elConn.className = "badge text-bg-secondary";
@@ -571,69 +586,38 @@
 
           const data = await res.json();
           const orders = data.orders || [];
-          const bill = data.bill || {};
 
-          // Orders UI
           if (orders.length === 0) {
             elOrders.innerHTML = `<div class="text-muted">Chưa có đơn nào.</div>`;
           } else {
             elOrders.innerHTML = `<div class="vstack gap-2">${orders.map(renderOrder).join("")}</div>`;
           }
 
-          // Toast: new order, status change
-          for (const o of orders) {
-            const prev = lastStatus.get(o.id);
-            if (!prev) {
-              showToast(`Đã ghi nhận đơn #${o.id} (${statusMeta(o.status).label})`);
-            } else if (prev !== o.status) {
-              showToast(`Đơn #${o.id}: ${statusMeta(prev).label} → ${statusMeta(o.status).label}`);
-            }
-            lastStatus.set(o.id, o.status);
-          }
-
-          // Bill UI
-          const bMeta = billStatusMeta(bill);
-
-          if (elBillStatus) {
-            elBillStatus.className = "badge " + bMeta.badge;
-            elBillStatus.textContent = bMeta.label;
-          }
-
-          if (elBillLines) elBillLines.innerHTML = renderBillLines(bill.lines || []);
-          if (elBillTotal) elBillTotal.textContent = fmtMoney(bill.total || 0);
-          if (elBillQty) elBillQty.textContent = `${bill.qty || 0} món`;
-
-          if (elStickyBill) {
-            elStickyBill.textContent = `${fmtMoney(bill.total || 0)} • ${bill.qty || 0} món`;
-          }
-
-          // nút gọi thanh toán
-          if (btnBill) {
-            const total = Number(bill.total || 0);
-            if (bill.paid) {
-              btnBill.disabled = true;
-              btnBill.textContent = "Đã thanh toán";
-            } else if (bill.requested) {
-              btnBill.disabled = true;
-              btnBill.textContent = "Đã gọi thanh toán";
-            } else {
-              btnBill.textContent = "Gọi thanh toán";
-              btnBill.disabled = total <= 0;
+          if (!firstLoad) {
+            for (const o of orders) {
+              const prev = lastStatus.get(o.id);
+              if (!prev) {
+                showToast(`Đã ghi nhận đơn #${o.id} (${statusMeta(o.status).label})`);
+              } else if (prev !== o.status) {
+                showToast(`Đơn #${o.id}: ${statusMeta(prev).label} → ${statusMeta(o.status).label}`);
+              }
             }
           }
+          for (const o of orders) lastStatus.set(o.id, o.status);
 
           const nowIso = data.server_time || new Date().toISOString();
           if (elLastUpdated) elLastUpdated.textContent = `Cập nhật lúc ${fmtTime(nowIso)}`;
 
           elConn.className = "badge text-bg-success";
           elConn.textContent = "Đang theo dõi";
+
+          firstLoad = false;
         } catch (err) {
           elConn.className = "badge text-bg-danger";
           elConn.textContent = "Mất kết nối";
         }
       }
 
-      // Refresh table colors 
       async function refreshTables() {
         try {
           const res = await fetch(TABLES_URL, { headers: { "Accept": "application/json" } });
@@ -648,28 +632,23 @@
               btn.className = "btn btn-sm btn-primary table-btn";
               return;
             }
-
             const st = mp[t] || "empty";
             let cls = "btn-outline-primary";
             if (st === "billing") cls = "btn-danger";
             else if (st === "occupied") cls = "btn-warning";
-
             btn.className = `btn btn-sm ${cls} table-btn`;
           });
         } catch (e) {}
       }
 
-      // Manual refresh
       btnRefresh && btnRefresh.addEventListener("click", async () => {
         await refreshOrders();
         await refreshTables();
       });
 
-      // Initial
       refreshOrders();
       refreshTables();
 
-      // Auto refresh
       setInterval(() => {
         if (autoToggle && autoToggle.checked) {
           refreshOrders();
@@ -677,33 +656,67 @@
         }
       }, 5000);
 
-      //  QR Modal 
+      // Modal QR
       const qrModal = document.getElementById("qrModal");
-      const qrCanvas = document.getElementById("qrCanvas");
+      const qrImg = document.getElementById("qrImg");
       const shareLink = document.getElementById("shareLink");
       const copyBtn = document.getElementById("copyLink");
 
       if (shareLink) shareLink.value = SHARE_URL;
 
-      qrModal && qrModal.addEventListener("show.bs.modal", () => {
+      qrModal && qrModal.addEventListener("shown.bs.modal", () => {
         try {
           if (shareLink) shareLink.value = SHARE_URL;
-          if (window.QRCode && qrCanvas) {
-            QRCode.toCanvas(qrCanvas, SHARE_URL, { width: 220, margin: 1 }, function (error) {});
-          }
+          if (qrImg) qrImg.src = QR_URL + "?v=" + Date.now();
         } catch (e) {}
       });
 
-      copyBtn && copyBtn.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(SHARE_URL);
-          showToast("Đã copy link menu.");
-        } catch (e) {
-          if (shareLink) {
-            shareLink.focus();
-            shareLink.select();
+      async function copyText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+        if (shareLink) {
+          shareLink.value = text;
+          shareLink.focus();
+          shareLink.select();
+          try {
+            return document.execCommand("copy");
+          } catch (e) {
+            return false;
           }
         }
+        return false;
+      }
+
+      copyBtn && copyBtn.addEventListener("click", async () => {
+        const ok = await copyText(SHARE_URL);
+        if (ok) showToast("Đã copy link menu.");
+        else showToast("Không copy được, hãy copy thủ công.");
+      });
+
+      // People modal auto show if not set
+      const peopleModalEl = document.getElementById("peopleModal");
+      const pc = Number("{{ people_count or 0 }}");
+      if (peopleModalEl && (!pc || pc <= 0)) {
+        const m = new bootstrap.Modal(peopleModalEl);
+        m.show();
+      }
+
+      const pcInput = document.getElementById("people_count_input");
+      document.querySelectorAll("#peopleButtons button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const n = Number(btn.dataset.n || "0");
+          if (pcInput) pcInput.value = String(n);
+          document.querySelectorAll("#peopleButtons button").forEach(b => b.className = "btn btn-outline-primary people-btn");
+          btn.className = "btn btn-primary people-btn";
+        });
+      });
+
+      const custom = document.getElementById("peopleCustom");
+      custom && custom.addEventListener("input", () => {
+        const n = Number(custom.value || "0");
+        if (n > 0 && pcInput) pcInput.value = String(n);
       });
     })();
   </script>

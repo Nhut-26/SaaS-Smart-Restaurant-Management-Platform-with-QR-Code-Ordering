@@ -6,37 +6,37 @@ const SUPABASE_URL = "https://vhjxxgajenkzuykkqloi.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoanh4Z2FqZW5renV5a2txbG9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0OTgyMjIsImV4cCI6MjA4MzA3NDIyMn0.l04T4IY-2mdFTvVhksDBmL5buErB1Pfa97GQOgRVtCg";
 
 const db = window.supabase.createClient(
-  SUPABASE_URL,
-  SUPABASE_ANON_KEY
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
 );
+(async () => {
+    const { data: { session }, error } = await db.auth.getSession();
+
+    if (error || !session) {
+        window.location.replace("../Login/loginAdmin.html");
+        return;
+    }
+})();
 document.addEventListener("DOMContentLoaded", () => {
-  checkAuth();
-  setupNavigation();
-  renderSystemDashboard();
+    checkAuth();
+    setupNavigation();
+    renderSystemDashboard();
 });
 
 async function checkAuth() {
-  const { data: { session } } = await db.auth.getSession();
+    const { data: { session } } = await db.auth.getSession();
 
-  if (!session) {
-   window.location.href = "../login.html";
+    if (!session) {
+        window.location.href = "../Login/login.html";
 
-    return;
-  }
+        return;
+    }
 
-  const adminNameEl = document.getElementById("adminName");
-  if (adminNameEl) {
-    adminNameEl.innerText =
-      session.user.user_metadata?.full_name || session.user.email;
-  }
-}
-
-const logoutBtn = document.getElementById("logout-btn");
-if (logoutBtn) {
-  logoutBtn.addEventListener("click", async () => {
-    await db.auth.signOut();
-    window.location.href = "../login.html";
-  });
+    const adminNameEl = document.getElementById("adminName");
+    if (adminNameEl) {
+        adminNameEl.innerText =
+            session.user.user_metadata?.full_name || session.user.email;
+    }
 }
 
 
@@ -58,10 +58,26 @@ const PLAN_PRICES = {
     'trial': 0
 };
 
+// Cấu hình các gói AI theo yêu cầu mới
 const AI_PLANS_CONFIG = {
-    'free': { model: 'GPT-3.5', tokens: '10k/tháng', speed: 'Thấp', support: 'Cơ bản' },
-    'plus': { model: 'GPT-4', tokens: '100k/tháng', speed: 'Nhanh', support: 'Ưu tiên' },
-    'pro': { model: 'GPT-4 Turbo', tokens: 'Không giới hạn', speed: 'Siêu tốc', support: '1:1' }
+    'basic': {
+        model: 'GPT 1',
+        speed: 'Chậm',
+        price: '20.000đ/tháng',
+        desc: 'Truyền tải chậm'
+    },
+    'plus': {
+        model: 'GPT 2',
+        speed: 'Nhanh',
+        price: '40.000đ/tháng',
+        desc: 'Truyền tải nhanh'
+    },
+    'pro': {
+        model: 'GPT 3',
+        speed: 'Siêu tốc',
+        price: '55.000đ/tháng',
+        desc: 'Nhanh nhất'
+    },
 };
 
 
@@ -72,7 +88,7 @@ function setupNavigation() {
         item.addEventListener("click", () => {
             menuItems.forEach(i => i.classList.remove("active"));
             item.classList.add("active");
-            
+
             const page = item.dataset.page;
             if (page === "dashboard") renderSystemDashboard();
             if (page === "tenants") fetchAndRenderRestaurants();
@@ -81,39 +97,271 @@ function setupNavigation() {
         });
     });
 }
+let dashboardTenants = [];
+let dashboardRestaurants = [];
 
 // Thống kê
 function renderSystemDashboard() {
     pageTitle.innerText = "Tổng quan hệ thống";
-    content.innerHTML = `
-        <div class="finance-summary">
-            <div class="summary">
-                <p>Tổng doanh thu SaaS</p>
-                <h3>${systemStats.revenue.toLocaleString()}đ</h3>
-            </div>
-            <div class="summary">
-                <p>Tổng đối tác</p>
-                <h3>${systemStats.tenants}</h3>
-            </div>
-            <div class="summary">
-                <p>Người dùng Active</p>
-                <h3>${systemStats.users}</h3>
-            </div>
+
+    fetchDashboardData().then(() => {
+        const kpi = calculateDashboardKPIs();
+
+        content.innerHTML = `
+    <div class="finance-summary">
+        <div class="summary">
+            <p>Tổng doanh thu SaaS</p>
+            <h3>${kpi.totalRevenue.toLocaleString()}đ</h3>
         </div>
-        <div style="background:white; padding:20px; border-radius:12px; height:300px; display:flex; align-items:center; justify-content:center; color:#999; border: 2px dashed #ddd;">
-            [Biểu đồ tăng trưởng hệ thống sẽ hiển thị ở đây]
+
+        <div class="summary">
+            <p>Doanh thu tháng này</p>
+            <h3>${kpi.monthlyRevenue.toLocaleString()}đ</h3>
+        </div>
+
+        <div class="summary">
+            <p>Tổng đối tác</p>
+            <h3>${kpi.totalTenants}</h3>
+        </div>
+
+        <div class="summary">
+            <p>User Active</p>
+            <h3>${kpi.activeUsers}</h3>
+        </div>
+
+        <div class="summary">
+            <p>Đối tác ngưng hoạt động</p>
+            <h3>${kpi.inactiveUsers}</h3>
+        </div>
+
+        <div class="summary">
+            <p>Nhà hàng đang online</p>
+            <h3>${kpi.activeRestaurants}</h3>
+        </div>
+
+        <!-- ROW 50 / 50 -->
+        <div class="dashboard-row">
+            <div class="card">
+                <h3>📊 Doanh thu theo tháng</h3>
+                <div class="chart-box">
+                    <canvas id="revenueChart"></canvas>
+                </div>
+            </div>
+
+            ${renderExpiringTenantsTable()}
+        </div>
+    </div>
+`;
+        renderRevenueChart();
+    });
+}
+
+async function fetchDashboardData() {
+    try {
+        // 1️⃣ Lấy tenants
+        const { data: tenants, error: tError } = await db
+            .from("tenants")
+            .select("id, name,  status, package, created_at");
+        if (tError) throw tError;
+
+        // 2️⃣ Lấy restaurants
+        const { data: restaurants, error: rError } = await db
+            .from("restaurants")
+            .select("id, name, status");
+
+        if (rError) throw rError;
+
+        dashboardTenants = tenants || [];
+        dashboardRestaurants = restaurants || [];
+
+        console.log("✅ DASHBOARD TENANTS:", dashboardTenants);
+        console.log("✅ DASHBOARD RESTAURANTS:", dashboardRestaurants);
+
+    } catch (err) {
+        console.error("❌ Lỗi tải dashboard data:", err.message);
+    }
+}
+function calculateDashboardKPIs() {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    let totalRevenue = 0;
+    let monthlyRevenue = 0;
+    let activeUsers = 0;
+    let inactiveUsers = 0;
+
+    dashboardTenants.forEach(t => {
+        const price = PLAN_PRICES[t.package] || 0;
+        const createdAt = new Date(t.created_at);
+
+        // Tổng doanh thu
+        if (t.status === 'paid') {
+            totalRevenue += price;
+            activeUsers++;
+
+            // Doanh thu tháng này
+            if (
+                createdAt.getMonth() === currentMonth &&
+                createdAt.getFullYear() === currentYear
+            ) {
+                monthlyRevenue += price;
+            }
+        } else {
+            inactiveUsers++;
+        }
+    });
+
+    const totalTenants = dashboardTenants.length;
+    const activeRestaurants = dashboardRestaurants.filter(
+        r => r.status === 'Active'
+    ).length;
+
+    return {
+        totalRevenue,
+        monthlyRevenue,
+        totalTenants,
+        activeUsers,
+        inactiveUsers,
+        activeRestaurants
+    };
+}
+function getMonthlyRevenueData() {
+    const monthlyData = {};
+
+    dashboardTenants.forEach(t => {
+        if (t.status !== 'paid') return;
+
+        const date = new Date(t.created_at);
+        const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
+        const price = PLAN_PRICES[t.package] || 0;
+
+        if (!monthlyData[monthKey]) {
+            monthlyData[monthKey] = 0;
+        }
+
+        monthlyData[monthKey] += price;
+    });
+
+    const labels = Object.keys(monthlyData).sort();
+    const values = labels.map(m => monthlyData[m]);
+
+    return { labels, values };
+}
+function renderRevenueChart() {
+    const ctx = document.getElementById("revenueChart");
+    if (!ctx) return;
+
+    const { labels, values } = getMonthlyRevenueData();
+
+    new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels,
+            datasets: [{
+                label: "Doanh thu (VNĐ)",
+                data: values,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false, // 👈 RẤT QUAN TRỌNG
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    ticks: {
+                        callback: v => v.toLocaleString() + "đ"
+                    }
+                }
+            }
+        }
+    });
+}
+function getExpiringTenants(days = 7) {
+    const now = new Date();
+    const limitDate = new Date();
+    limitDate.setDate(now.getDate() + days);
+
+    return dashboardTenants.filter(t => {
+        if (!t.expired_at) return false;
+        if (t.status !== 'paid') return false;
+
+        const expiredAt = new Date(t.expired_at);
+        return expiredAt >= now && expiredAt <= limitDate;
+    });
+}
+function renderExpiringTenantsTable() {
+    const list = getExpiringTenants(7);
+
+    let rows = "";
+
+    if (list.length === 0) {
+        rows = `
+            <tr>
+                <td colspan="4" style="text-align:center; color:#888;">
+                    Không có đối tác sắp hết hạn 🎉
+                </td>
+            </tr>
+        `;
+    } else {
+        rows = list.slice(0, 5).map(t => `
+            <tr>
+                <td>${t.name}</td>
+                <td>${t.package}</td>
+                <td>${new Date(t.expired_at).toLocaleDateString()}</td>
+                <td>
+                    <span style="
+                        background:#fee2e2;
+                        color:#b91c1c;
+                        padding:4px 8px;
+                        border-radius:8px;
+                        font-size:12px;
+                    ">
+                        Sắp hết hạn
+                    </span>
+                </td>
+            </tr>
+        `).join("");
+    }
+
+    return `
+        <div style="
+            background:#fff;
+            padding:20px;
+            border-radius:12px;
+            margin-top:30px;
+        ">
+            <h3>⚠️ Đối tác sắp hết hạn (7 ngày)</h3>
+
+            <table style="width:100%; margin-top:10px; border-collapse:collapse;">
+                <thead>
+                    <tr style="text-align:left; border-bottom:1px solid #eee;">
+                        <th>Tên</th>
+                        <th>Gói</th>
+                        <th>Hết hạn</th>
+                        <th>Trạng thái</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
         </div>
     `;
 }
+
 
 // Nhà hàng
 
 async function fetchAndRenderRestaurants() {
     pageTitle.innerText = "Đang tải dữ liệu nhà hàng...";
-    
+
     try {
         const { data, error } = await db
-            .from('restaurants') 
+            .from('restaurants')
             .select(`
                 *,
                 tenants (
@@ -126,7 +374,7 @@ async function fetchAndRenderRestaurants() {
         if (error) throw error;
 
         restaurants = data || [];
-        renderRestaurants(); 
+        renderRestaurants();
 
     } catch (err) {
         console.error("Lỗi tải data:", err);
@@ -164,20 +412,20 @@ function renderRestaurants() {
             const rPrice = r.price_range || "<span style='color:#bbb'>--</span>";
 
             const rStatus = r.status || 'Pending';
-            
-            const tenantInfo = r.tenants || {}; 
+
+            const tenantInfo = r.tenants || {};
             const tOwner = tenantInfo.name || "Unknown";
             const tEmail = tenantInfo.email || "";
 
             // Xử lý giao diện trạng thái
             let rowStyle = "";
             let badgeHtml = "";
-            
+
             if (rStatus === 'Active') {
-                rowStyle = "background-color: #e8f8f5;"; 
+                rowStyle = "background-color: #e8f8f5;";
                 badgeHtml = `<span style="background:#27ae60; color:white; padding:5px 10px; border-radius:15px; font-size:11px; font-weight:bold;">Active</span>`;
             } else if (rStatus === 'Locked') {
-                rowStyle = "background-color: #fce4ec;"; 
+                rowStyle = "background-color: #fce4ec;";
                 badgeHtml = `<span style="background:#c0392b; color:white; padding:5px 10px; border-radius:15px; font-size:11px; font-weight:bold;">Locked</span>`;
             } else {
                 rowStyle = "";
@@ -234,14 +482,14 @@ function renderRestaurants() {
 async function processRestaurantAction(id, newStatus) {
     if (!newStatus) return;
     if (!confirm("Bạn muốn thay đổi trạng thái nhà hàng này?")) {
-        renderRestaurants(); 
+        renderRestaurants();
         return;
     }
 
     const restaurant = restaurants.find(r => r.id === id);
     if (restaurant) {
         restaurant.status = newStatus;
-        renderRestaurants(); 
+        renderRestaurants();
     }
 
     try {
@@ -252,7 +500,7 @@ async function processRestaurantAction(id, newStatus) {
         if (error) throw error;
     } catch (err) {
         alert("Lỗi cập nhật: " + err.message);
-        fetchAndRenderRestaurants(); 
+        fetchAndRenderRestaurants();
     }
 }
 
@@ -264,7 +512,7 @@ async function editRestaurantInfo(id) {
     // Prompt lấy thông tin (Thêm 2 mục mới)
     const newName = prompt("Tên nhà hàng:", r.name);
     if (newName === null) return;
-    
+
     // Thêm prompt cho Loại hình
     const newCuisine = prompt("Loại hình ẩm thực (VD: Buffet, Lẩu, Cafe...):", r.cuisine_type || "");
     if (newCuisine === null) return;
@@ -282,14 +530,14 @@ async function editRestaurantInfo(id) {
     r.name = newName;
     r.cuisine_type = newCuisine; // Cập nhật biến local
     r.price_range = newPrice;    // Cập nhật biến local
-    if(r.tenants) { r.tenants.owner = newOwner; r.tenants.email = newEmail; }
-    
+    if (r.tenants) { r.tenants.owner = newOwner; r.tenants.email = newEmail; }
+
     renderRestaurants();
 
     // Update DB
     try {
         // Update bảng Restaurants (thêm cuisine_type và price_range)
-        await db.from('restaurants').update({ 
+        await db.from('restaurants').update({
             name: newName,
             cuisine_type: newCuisine,
             price_range: newPrice
@@ -322,7 +570,7 @@ async function syncFromGoogleForm() {
     // Logic: Tạo Tenant -> Lấy ID -> Tạo Restaurant
     const API_URL = "https://sheetdb.io/api/v1/lwt1l44qsuwxo";
     const btn = document.querySelector(".btn-green");
-    if(btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
+    if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
 
     try {
         const response = await fetch(API_URL);
@@ -333,7 +581,7 @@ async function syncFromGoogleForm() {
             const email = item["Email"];
             if (!email) continue;
             const exists = restaurants.some(r => r.tenants && r.tenants.email === email);
-            
+
             if (!exists) {
                 // Tạo Tenant
                 const { data: tenantData, error: tErr } = await db
@@ -348,7 +596,7 @@ async function syncFromGoogleForm() {
                         status: "Pending",
                         tenant_id: tenantData.id,
                         // Mặc định cho 2 cột mới khi sync từ form (vì form chưa có cột này)
-                        cuisine_type: "Chưa cập nhật", 
+                        cuisine_type: "Chưa cập nhật",
                         price_range: "Chưa cập nhật"
                     });
                     newCount++;
@@ -360,7 +608,7 @@ async function syncFromGoogleForm() {
     } catch (e) {
         alert("Lỗi kết nối!");
         console.error(e);
-        if(btn) btn.innerHTML = '<i class="fas fa-sync"></i> Đồng bộ Google Form';
+        if (btn) btn.innerHTML = '<i class="fas fa-sync"></i> Đồng bộ Google Form';
     }
 }
 
@@ -392,7 +640,7 @@ async function fetchAndRenderUsers() {
 
 function renderGlobalUsers() {
     pageTitle.innerText = "Quản lý Người dùng & Doanh thu";
-    
+
     let html = `
         <div class="page-header">
             <input type="text" placeholder="Tìm kiếm tên, email..." onkeyup="filterUsers(this.value)">
@@ -417,16 +665,16 @@ function renderGlobalUsers() {
     } else {
         users.forEach(u => {
             // Lấy ID để xử lý logic (nhưng không hiển thị ra UI)
-            const uId = u.id; 
-            
+            const uId = u.id;
+
             const uName = u.name || "Chưa đặt tên";
             const uEmail = u.email || "No Email";
             // Nếu package trong DB là trial hoặc null, mặc định hiển thị là monthly để tránh lỗi select box
             let uPackage = u.package;
-            if (!PLAN_PRICES[uPackage]) uPackage = 'monthly'; 
+            if (!PLAN_PRICES[uPackage]) uPackage = 'monthly';
 
             const uStatus = u.status || "unpaid";
-            
+
             // Xử lý ngày tháng
             let expiryDateObj;
             let expiryDateStr;
@@ -521,9 +769,9 @@ async function updateUserPackage(id, newPackage) {
     try {
         const { error } = await db
             .from('tenants')
-            .update({ 
+            .update({
                 package: newPackage,
-                expired_at: expiryISOString 
+                expired_at: expiryISOString
             })
             .eq('id', id);
 
@@ -577,7 +825,7 @@ function calculateExpiryDate(startDateObj, plan) {
     else if (plan === 'yearly') date.setFullYear(date.getFullYear() + 1);
     // Mặc định trả về 1 tháng nếu không khớp
     else date.setMonth(date.getMonth() + 1);
-    
+
     return formatDate(date);
 }
 
@@ -591,83 +839,191 @@ function filterUsers(keyword) {
 }
 
 
-function renderAIConfig() {
-    pageTitle.innerText = "Cấu hình AI & Cấp phát tài nguyên";
-    
-    let html = `
-        <div class="page-header">
-            <div class="ai-stats-group">
-                <div class="ai-stat-card">
-                    <span>Free Users</span>
-                    <strong>${tenants.filter(t => t.aiPlan === 'free').length}</strong>
-                </div>
-                <div class="ai-stat-card">
-                    <span>Plus Users</span>
-                    <strong>${tenants.filter(t => t.aiPlan === 'plus').length}</strong>
-                </div>
-                <div class="ai-stat-card">
-                    <span>Pro Users</span>
-                    <strong>${tenants.filter(t => t.aiPlan === 'pro').length}</strong>
-                </div>
-            </div>
-            <input type="text" placeholder="Tìm kiếm nhà hàng để cấp phát...">
-        </div>
+async function renderAIConfig() {
+    pageTitle.innerText = "Đang tải cấu hình AI...";
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Nhà hàng</th>
-                    <th>Gói AI hiện tại</th>
-                    <th>Cấu hình chi tiết (Preview)</th>
-                    <th>Trạng thái AI</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
+    try {
+        // 1. Lấy dữ liệu từ Supabase
+        const { data, error } = await db
+            .from('tenants')
+            .select('id, name, status, ai_plan')
+            .order('id', { ascending: true });
 
-    tenants.forEach(t => {
-        const config = AI_PLANS_CONFIG[t.aiPlan];
+        if (error) throw error;
 
-        html += `
-            <tr>
-                <td>
-                    <div style="font-weight:bold; font-size:14px;">${t.name}</div>
-                    <div style="font-size:12px; color:#888;">ID: #${t.id}</div>
-                </td>
-                <td>
-                    <select onchange="updateAIPlan(${t.id}, this.value)" class="ai-select ${t.aiPlan}">
-                        <option value="free" ${t.aiPlan === 'free' ? 'selected' : ''}>Gói Free</option>
-                        <option value="plus" ${t.aiPlan === 'plus' ? 'selected' : ''}>Gói Plus</option>
-                        <option value="pro" ${t.aiPlan === 'pro' ? 'selected' : ''}>Gói Pro</option>
-                    </select>
-                </td>
-                <td>
-                    <div class="ai-specs">
-                        <span class="spec-tag"><i class="fas fa-brain"></i> ${config.model}</span>
-                        <span class="spec-tag"><i class="fas fa-bolt"></i> ${config.speed}</span>
-                        <span class="spec-tag"><i class="fas fa-coins"></i> ${config.tokens}</span>
+        const aiTenants = data || [];
+        pageTitle.innerText = "Cấu hình AI & Cấp phát tài nguyên";
+
+        // Thống kê (Gộp null/free/basic vào nhóm Basic)
+        const countBasic = aiTenants.filter(t => t.ai_plan === 'basic' || t.ai_plan === 'free' || !t.ai_plan).length;
+        const countPlus = aiTenants.filter(t => t.ai_plan === 'plus').length;
+        const countPro = aiTenants.filter(t => t.ai_plan === 'pro').length;
+
+        let html = `
+            <div class="page-header">
+                <div class="ai-stats-group">
+                    <div class="ai-stat-card">
+                        <span>Gói Basic (GPT 1)</span>
+                        <strong>${countBasic}</strong>
                     </div>
-                </td>
-                <td>
-                   <div style="display:flex; align-items:center; gap:5px;">
-                        <div class="status-dot ${t.status === 'Active' ? 'online' : 'offline'}"></div>
-                        <span style="font-size:12px; color:#555;">${t.status === 'Active' ? 'Sẵn sàng' : 'Tạm dừng'}</span>
-                   </div>
-                </td>
-            </tr>
+                    <div class="ai-stat-card">
+                        <span>Gói Plus (GPT 2)</span>
+                        <strong>${countPlus}</strong>
+                    </div>
+                    <div class="ai-stat-card">
+                        <span>Gói Pro (GPT 3)</span>
+                        <strong>${countPro}</strong>
+                    </div>
+                </div>
+                <input type="text" placeholder="Tìm kiếm nhà hàng..." onkeyup="filterAIConfig(this.value)">
+            </div>
+
+            <table class="ai-table" style="width: 100%; border-collapse: separate; border-spacing: 0 10px;">
+                <thead>
+                    <tr style="text-align: left; color: #666;">
+                        <th style="padding: 10px;">Nhà hàng</th>
+                        <th style="padding: 10px;">Chọn Gói Cước</th>
+                        <th style="padding: 10px;">Cấu hình chi tiết (Tự động)</th>
+                        <th style="padding: 10px;">Trạng thái</th>
+                    </tr>
+                </thead>
+                <tbody>
         `;
-    });
 
-    html += `</tbody></table>`;
-    content.innerHTML = html;
-}
+        if (aiTenants.length === 0) {
+            html += `<tr><td colspan="4" style="text-align:center;">Chưa có dữ liệu.</td></tr>`;
+        } else {
+            aiTenants.forEach(t => {
+                // 1. Xử lý Gói cước (Mặc định Basic nếu null/free)
+                let currentPlan = t.ai_plan || 'basic';
+                if (currentPlan === 'free') currentPlan = 'basic';
 
-function updateAIPlan(id, newPlan) {
-    const tenant = tenants.find(t => t.id === id);
-    if (tenant) {
-        tenant.aiPlan = newPlan;
-        renderAIConfig();
-        // ---API---
-        console.log(`Đã cấp gói AI [${newPlan}] cho nhà hàng ${tenant.name}`);
+                const config = AI_PLANS_CONFIG[currentPlan] || AI_PLANS_CONFIG['basic'];
+
+                // 2. Xử lý Trạng thái
+                // Chấp nhận cả 'paid' (đã thanh toán) là trạng thái xanh
+                const rawStatus = (t.status || '').toLowerCase(); // Chuyển về chữ thường để so sánh
+                const isOnline = rawStatus === 'paid';
+
+                // Màu sắc trạng thái
+                const statusColor = isOnline ? '#27ae60' : '#bdc3c7'; // Xanh lá hoặc Xám
+                const statusText = isOnline ? 'Đang hoạt động' : 'Chưa kích hoạt';
+
+                // Màu nền badge gói cước
+                let badgeColor = '#f5f5f5';
+                if (currentPlan === 'plus') badgeColor = '#e3f2fd'; // Xanh nhạt
+                if (currentPlan === 'pro') badgeColor = '#fff3e0';  // Cam nhạt
+
+                html += `
+                    <tr style="background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-radius: 8px;">
+                        <td style="padding: 15px; border-radius: 8px 0 0 8px;">
+                            <div style="font-weight:bold; font-size:15px; color:#2c3e50;">${t.name || 'No Name'}</div>
+                            <div style="font-size:12px; color:#888;">ID: #${t.id}</div>
+                        </td>
+                        <td style="padding: 15px;">
+                            <select onchange="updateAIPlan('${t.id}', this.value)" 
+                                    style="padding: 8px; border-radius: 6px; border: 1px solid #ddd; width: 100%; font-weight: bold; cursor: pointer;">
+                                <option value="basic" ${currentPlan === 'basic' ? 'selected' : ''}>Basic</option>
+                                <option value="plus" ${currentPlan === 'plus' ? 'selected' : ''}>Plus</option>
+                                <option value="pro" ${currentPlan === 'pro' ? 'selected' : ''}>Pro</option>
+                            </select>
+                        </td>
+                        <td style="padding: 15px;">
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; background: ${badgeColor}; padding: 8px; border-radius: 6px;">
+                                <span class="spec-tag" style="background:#fff; padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:12px;">
+                                    <i class="fas fa-robot" style="color:#2980b9;"></i> <b>${config.model}</b>
+                                </span>
+                                <span class="spec-tag" style="background:#fff; padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:12px;">
+                                    <i class="fas fa-tachometer-alt" style="color:#c0392b;"></i> ${config.speed}
+                                </span>
+                                <span class="spec-tag" style="background:#fff; padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:12px;">
+                                    <i class="fas fa-tag" style="color:#27ae60;"></i> <b>${config.price}</b>
+                                </span>
+                            </div>
+                        </td>
+                        <td style="padding: 15px; border-radius: 0 8px 8px 0;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width: 10px; height: 10px; border-radius: 50%; background: ${statusColor}; box-shadow: 0 0 5px ${statusColor};"></div>
+                                <span style="font-size:13px; font-weight: 500; color: ${statusColor};">
+                                    ${statusText}
+                                </span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        html += `</tbody></table>`;
+        content.innerHTML = html;
+
+    } catch (err) {
+        console.error("Lỗi:", err);
+        content.innerHTML = `<div class="error-msg">Lỗi tải dữ liệu: ${err.message}</div>`;
     }
 }
+
+async function updateAIPlan(id, newPlan) {
+    // Xác định tên hiển thị để hỏi xác nhận
+    const planName = newPlan.toUpperCase();
+    let priceInfo = "";
+    if (newPlan === 'basic') priceInfo = "20.000đ";
+    if (newPlan === 'plus') priceInfo = "40.000đ";
+    if (newPlan === 'pro') priceInfo = "55.000đ";
+
+    if (!confirm(`Xác nhận đổi sang gói ${planName} (${priceInfo}) cho nhà hàng này?`)) {
+        renderAIConfig(); // Load lại nếu hủy để giao diện quay về cũ
+        return;
+    }
+
+    try {
+        const { error } = await db
+            .from('tenants')
+            .update({ ai_plan: newPlan })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        // Sau khi update thành công, render lại để thấy thông số kỹ thuật mới
+        renderAIConfig();
+
+    } catch (err) {
+        alert("Lỗi cập nhật: " + err.message);
+        renderAIConfig();
+    }
+}
+
+// Bổ sung hàm lọc nhanh cho bảng AI (nếu cần)
+function filterAIConfig(keyword) {
+    const term = keyword.toLowerCase();
+    const rows = document.querySelectorAll(".ai-table tbody tr");
+    rows.forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(term) ? "" : "none";
+    });
+}
+// ================= LOGOUT =================
+document.addEventListener("DOMContentLoaded", () => {
+    const logoutBtn = document.querySelector(".logout-btn");
+
+    if (!logoutBtn) {
+        console.error("❌ Không tìm thấy nút đăng xuất");
+        return;
+    }
+
+    logoutBtn.addEventListener("click", async () => {
+        const { error } = await db.auth.signOut();
+
+        if (error) {
+            console.error("❌ Lỗi đăng xuất:", error);
+            alert("Đăng xuất thất bại");
+            return;
+        }
+
+        // Xoá session local (cho chắc)
+        localStorage.clear();
+        sessionStorage.clear();
+
+        // Quay về trang login
+        window.location.href = "../Login/loginAdmin.html";
+    });
+});

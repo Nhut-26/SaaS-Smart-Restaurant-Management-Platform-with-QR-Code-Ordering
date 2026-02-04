@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Đăng nhập Admin</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="../css/loginAdmin.css">
+
+  <!-- Supabase CDN (BẮT BUỘC) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="box">
+  <h2 id="title">Đăng nhập</h2>
+
+  <input type="text" id="name" placeholder="Họ tên" style="display:none">
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Mật khẩu">
+
+  <button id="btn-submit">Đăng nhập</button>
+  <p id="toggle" class="link">Chưa có tài khoản? Đăng ký</p>
+</div>
+
+<!-- JS (LUÔN ĐỂ CUỐI, KHÔNG MODULE) -->
+<script src="../js/loginAdmin.js" defer></script>
+</body>
+</html>

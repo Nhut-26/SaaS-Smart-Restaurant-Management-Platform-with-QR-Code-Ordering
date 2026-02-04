@@ -1,0 +1,75 @@
+body {
+  background: url('https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=1974&auto=format&fit=crop')
+    no-repeat center center/cover;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  font-family: 'Poppins', sans-serif;
+  height: 100vh;
+  margin: 0;
+}
+
+/* BOX LOGIN */
+.box {
+  background: #fff;
+  padding: 32px;
+  width: 360px;              /* RỘNG HƠN → DỄ NHÌN */
+  border-radius: 10px;
+  box-shadow: 0 15px 40px rgba(0,0,0,.25);
+  text-align: center;        /* CĂN GIỮA CHỮ */
+}
+
+/* INPUT */
+.box input {
+  box-sizing: border-box;     /* QUAN TRỌNG NHẤT */
+  width: 100%;
+  height: 46px;               /* ÉP chiều cao */
+  padding: 0 16px;            /* KHÔNG dùng padding top/bottom */
+  margin: 14px 0;
+
+  border: 1px solid #ccc;
+  border-radius: 8px;
+
+  font-size: 14px;
+  line-height: 46px;          /* ÉP chữ nằm giữa */
+  
+  outline: none;
+  appearance: none;           /* TẮT STYLE MẶC ĐỊNH */
+  -webkit-appearance: none;
+  background-color: #fff;
+}
+
+
+.box input:focus {
+  border-color: #d35400;
+}
+
+/* BUTTON */
+.box button {
+  width: 100%;
+  height: 44px;              /* BẰNG INPUT */
+  margin-top: 10px;
+
+  background: #d35400;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.box button:hover {
+  background: #b84300;
+}
+
+/* LINK */
+.link {
+  margin-top: 18px;
+  text-align: center;
+  cursor: pointer;
+  color: #d35400;
+  font-size: 14px;
+}
