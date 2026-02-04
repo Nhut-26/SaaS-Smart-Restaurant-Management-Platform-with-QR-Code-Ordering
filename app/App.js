@@ -35,12 +35,12 @@ const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // Thay địa chỉ IP này bằng IP máy tính của bạn (Dùng lệnh ipconfig/ifconfig)
-const BASE_URL = 'https://smart-restaurant-management.onrender.com'; // <-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+const BASE_URL = 'http://192.168.1.14:8000/chat'; // <-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 const apiClient = axios.create({
     baseURL: BASE_URL,
-    timeout: 60000, // 10 giây nếu AI không phản hồi sẽ báo lỗi
+    timeout: 60000, // 60 giây nếu AI không phản hồi sẽ báo lỗi
 });
 
 
@@ -49,7 +49,7 @@ const sendMessageToAI = async (userMessage) => {
 
 
 
-        const response = await fetch('https://smart-restaurant-management.onrender.com/chat', { // Thay localhost bằng IP máy nếu chạy trên thiết bị thật ------------------------------------------------------------------------------------------------------
+        const response = await fetch('http://192.168.1.14:8000/chat', { // Thay localhost bằng IP máy nếu chạy trên thiết bị thật ------------------------------------------------------------------------------------------------------
 
 
 

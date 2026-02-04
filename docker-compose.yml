@@ -2,44 +2,46 @@
 
 services:
   # ------------------------------------
-  # 1. Backend AI (Flask - Port 8000)
+  # 1. Backend AI (Sửa lại context)
   # ------------------------------------
   backend_ai:
     build:
-      context: .                  # Build từ Root
-      dockerfile: app/backend_ai/Dockerfile
+      context: ./app/backend_ai     # <--- SỬA: Trỏ thẳng vào thư mục chứa code backend
+      dockerfile: Dockerfile        # <--- Dockerfile nằm ngay trong thư mục đó
     container_name: s2o_backend_ai
     ports:
       - "8000:8000"
     environment:
       - PORT=8000
     env_file:
-      - ./app/backend_ai/.env
+      - ./app/backend_ai/.env       # Đường dẫn file env giữ nguyên (tính từ root)
     networks:
       - s2o_network
 
   # ------------------------------------
-  # 2. Web Guest (FastAPI - Port 5000)
+  # 2. Web Guest (Sửa lại context)
   # ------------------------------------
   web_guest:
     build:
-      context: .                  # Build từ Root
-      dockerfile: Web_guest/Dockerfile
+      context: ./Web_guest          # <--- SỬA: Trỏ thẳng vào thư mục Web_guest
+      dockerfile: Dockerfile
     container_name: s2o_web_guest
     ports:
       - "5000:5000"
     environment:
       - PORT=5000
     env_file:
-      - ./Web_guest/.env          # Đảm bảo file này tồn tại hoặc dùng chung env
+      - ./Web_guest/.env
     networks:
       - s2o_network
 
   # ------------------------------------
-  # 3. Expo App (Web - Port 8081)
+  # 3. Expo App (Giữ nguyên hoặc kiểm tra lại)
   # ------------------------------------
   expo_app:
-    build: ./app                  # Build từ folder app
+    build:
+      context: ./app                # <--- Đảm bảo trong folder 'app' có Dockerfile
+      dockerfile: Dockerfile
     container_name: s2o_expo
     ports:
       - "8081:8081"
@@ -53,15 +55,15 @@ services:
       - s2o_network
 
   # ------------------------------------
-  # 4. Admin Web (Nginx - Port 8888)
+  # 4. Admin Web (Giữ nguyên)
   # ------------------------------------
   static_web:
     image: nginx:alpine
     container_name: s2o_static_web
     ports:
-      - "8888:80"                 # Map port 8888 ra ngoài
+      - "8888:80"
     volumes:
-      - ./:/usr/share/nginx/html  # Mount toàn bộ project vào
+      - ./:/usr/share/nginx/html
       - ./nginx.conf:/etc/nginx/nginx.conf
     networks:
       - s2o_network
