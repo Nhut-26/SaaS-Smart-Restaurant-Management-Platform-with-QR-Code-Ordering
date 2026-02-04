@@ -1,9 +1,8 @@
-﻿flask
-flask-cors
+﻿fastapi
+uvicorn
+pydantic
 python-dotenv
-google-generativeai
 supabase
 groq
-gunicorn
 requests
-uvicorn
+httpx
