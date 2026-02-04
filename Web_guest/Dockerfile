@@ -7,7 +7,7 @@ COPY Web_guest/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy code của Web_guest
-COPY Web_guest/ .
+COPY . .
 
 # Tạo thư mục static để tránh lỗi
 RUN mkdir -p static
