@@ -63,7 +63,7 @@ btn.onclick = async () => {
       alert("Sai tài khoản hoặc mật khẩu");
     } else {
       localStorage.setItem("user", JSON.stringify(data.user));
-      window.location.assign("../ADMIN/index.html");
+      window.location.assign("../ADMIN/admin.html");
 
     }
   }

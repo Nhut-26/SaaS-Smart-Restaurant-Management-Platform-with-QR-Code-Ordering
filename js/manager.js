@@ -12,7 +12,7 @@ window.currentUserInfo = null;
     const { data: { session }, error } = await supabaseClient.auth.getSession();
     
     if (error || !session) {
-        window.location.replace("../loginManager/index.html");
+        window.location.replace("../loginManager/loginManager.html");
         return;
     }
 
@@ -47,7 +47,7 @@ window.currentUserInfo = null;
         console.error("Lỗi lấy thông tin nhà hàng:", linkError);
         alert("Không tìm thấy thông tin nhà hàng liên kết! Vui lòng đăng nhập lại.");
         await supabaseClient.auth.signOut();
-        window.location.replace("../loginManager/index.html");
+        window.location.replace("../loginManager/loginManager.html");
         return;
     }
 
@@ -56,7 +56,7 @@ window.currentUserInfo = null;
     if (restaurant.status !== 'Active') {
         alert("Tài khoản nhà hàng này hiện không khả dụng (Chưa duyệt hoặc bị khóa).");
         await supabaseClient.auth.signOut();
-        window.location.replace("../loginManager/index.html");
+        window.location.replace("../loginManager/loginManager.html");
         return;
     }
 
@@ -898,9 +898,9 @@ window.releaseTable = function(tableId) {
 
 window.rejectReservation = function(id) {
     if (confirm("Bạn có chắc chắn muốn hủy yêu cầu đặt chỗ này?")) {
-        const index = reservations.findIndex(r => r.id === id);
+        const index = allReservations.findIndex(r => r.id === id);
         if (index !== -1) {
-            reservations.splice(index, 1); 
+            allReservations.splice(index, 1); 
             renderTableReservation();
         }
     }
@@ -2583,7 +2583,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             localStorage.clear();
             sessionStorage.clear();
-            window.location.replace("../loginManager/index.html");
+            window.location.replace("../loginManager/loginManager.html");
         }
     });
 });
