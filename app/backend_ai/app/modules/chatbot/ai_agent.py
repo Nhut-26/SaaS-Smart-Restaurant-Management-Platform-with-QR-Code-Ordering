@@ -228,6 +228,7 @@ class FoodChatAgent:
                 "user_id": str(user_id),
                 "restaurant_id": str(rest_id),
                 "table_id": str(real_table_id),
+                "status": "confirmed",
                 "booking_time": final_timestamp,
                 "people_count": int(info['people']) if info['people'] else 2,
                 "customer_name": info['name'],
@@ -564,3 +565,4 @@ class FoodChatAgent:
                 return {"reply": chat.choices[0].message.content, "intent": "SUPPORT"}
             except:
                 return {"reply": "Mình chưa hiểu ý bạn lắm.", "intent": "SUPPORT"}
+

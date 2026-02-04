@@ -15,7 +15,7 @@ const ChatBotContext = createContext();
 // Lưu ý: Đuôi :8000/chat là bắt buộc.
 
 
-const API_URL = 'https://smart-restaurant-management.onrender.com/';//----------------------------------------------------------------------------------------------------------------------------------------
+const API_URL = 'https://smart-restaurant-management.onrender.com/chat';//----------------------------------------------------------------------------------------------------------------------------------------
 
 export const useChatBot = () => {
     const context = useContext(ChatBotContext);
