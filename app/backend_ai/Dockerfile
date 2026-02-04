@@ -1,21 +1,20 @@
-﻿# Sử dụng Python 3.9 (hoặc phiên bản bạn đang dùng)
-FROM python:3.9-slim
+﻿FROM python:3.9-slim
 
-# Thiết lập thư mục làm việc BÊN TRONG container
-WORKDIR /app
+# 1. Đổi tên thư mục làm việc thành /src (hoặc /code) 
+# để KHÔNG BỊ TRÙNG với thư mục 'app' trong source code của bạn
+WORKDIR /code
 
-# --- SỬA LỖI Ở ĐÂY ---
-# Vì Root Directory là backend_ai, nên chỉ cần copy file ngay tại đó
+# 2. Copy file requirements
 COPY requirements.txt .
 
-# Cài đặt thư viện
+# 3. Cài đặt thư viện
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy toàn bộ code còn lại vào container
+# 4. Copy toàn bộ code vào thư mục /code
 COPY . .
 
-# Mở cổng 8000
+# 5. Mở cổng 8000
 EXPOSE 8000
 
-# Lệnh chạy server (dùng uvicorn)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 6. Sửa lệnh chạy: Dùng "python -m uvicorn" để đảm bảo chạy đúng môi trường
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
