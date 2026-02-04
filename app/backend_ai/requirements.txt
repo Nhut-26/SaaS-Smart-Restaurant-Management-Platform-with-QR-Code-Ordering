@@ -9,3 +9,4 @@ httpx
 Flask
 Flask-Cors
 gunicorn
+asgiref

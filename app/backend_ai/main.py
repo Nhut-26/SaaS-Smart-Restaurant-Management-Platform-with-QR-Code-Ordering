@@ -6,6 +6,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from groq import Groq # Import Groq
+from asgiref.wsgi import WsgiToAsgi
 
 
 # Import module AI Agent
@@ -16,6 +17,7 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+asgi_app = WsgiToAsgi(app)
 
 # 0. Cấu hình Weather API
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
