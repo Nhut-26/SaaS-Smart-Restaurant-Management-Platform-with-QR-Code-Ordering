@@ -272,7 +272,7 @@
           {% set bill_label = "Đã thanh toán" %}
         {% elif bill_requested %}
           {% set bill_badge = "text-bg-danger" %}
-          {% set bill_label = "Đã gọi thanh toán" %}
+          {% set bill_label = "Chờ thanh toán" %}
         {% else %}
           {% set bill_badge = "text-bg-secondary" %}
           {% set bill_label = "Chưa gọi" %}
@@ -320,7 +320,7 @@
               {% if bill_total == 0 %}
                 Đặt món xong thì tổng sẽ hiện ở đây để gọi thanh toán.
               {% elif bill_requested %}
-                Bạn đã gọi thanh toán, vui lòng chờ thu ngân.
+                Bạn đã gọi thanh toán. Nếu gọi thêm món, bấm “Cập nhật hóa đơn” để cập nhật tổng mới nhất.
               {% else %}
                 Đây là tổng tạm tính dựa trên các đơn đã đặt (kể cả đã phục vụ).
               {% endif %}
@@ -389,11 +389,11 @@
               <button id="btn-request-bill"
                       class="btn btn-outline-primary"
                       type="submit"
-                      {% if bill_total == 0 or bill_requested or bill_paid %}disabled{% endif %}>
+                      {% if bill_total == 0 or bill_paid %}disabled{% endif %}>
                 {% if bill_paid %}
                   Đã thanh toán
                 {% elif bill_requested %}
-                  Đã gọi thanh toán
+                  Cập nhật hóa đơn
                 {% else %}
                   Gọi thanh toán
                 {% endif %}
@@ -525,20 +525,18 @@
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#039;");
       }
-
+      
       function statusMeta(s) {
-        switch (s) {
-          case "NEW": return { label: "Mới đặt", badge: "text-bg-secondary", step: 0 };
-          case "CONFIRMED": return { label: "Đã xác nhận", badge: "text-bg-primary", step: 1 };
-          case "COOKING": return { label: "Đang chuẩn bị", badge: "text-bg-warning", step: 2 };
-          case "READY": return { label: "Sẵn sàng", badge: "text-bg-success", step: 3 };
-          case "SERVED": return { label: "Đã phục vụ", badge: "text-bg-success", step: 4 };
-          case "CANCELLED": return { label: "Đã huỷ", badge: "text-bg-danger", step: -1 };
-          default: return { label: String(s || ""), badge: "text-bg-info", step: -1 };
+        const v = String(s || "").toLowerCase();
+        switch (v) {
+          case "pending":   return { label: "Chờ xác nhận", badge: "text-bg-secondary", step: 0 };
+          case "confirmed": return { label: "Đã xác nhận", badge: "text-bg-primary", step: 1 };
+          case "completed": return { label: "Đã trả bàn",   badge: "text-bg-success", step: 2 };
+          default:          return { label: String(s || ""), badge: "text-bg-info", step: -1 };
         }
       }
 
-      const steps = ["Mới", "Xác nhận", "Đang làm", "Sẵn sàng", "Phục vụ"];
+      const steps = ["Chờ xác nhận", "Đã xác nhận", "Đã trả bàn"];
 
       function renderSteps(currentStatus) {
         const meta = statusMeta(currentStatus);
@@ -595,7 +593,6 @@
             elOrders.innerHTML = `<div class="vstack gap-2">${orders.map(renderOrder).join("")}</div>`;
           }
 
-          // tránh toast spam lần đầu load
           if (!firstLoad) {
             for (const o of orders) {
               const prev = lastStatus.get(o.id);
@@ -675,12 +672,10 @@
       });
 
       async function copyText(text) {
-        // modern
         if (navigator.clipboard && navigator.clipboard.writeText) {
           await navigator.clipboard.writeText(text);
           return true;
         }
-        // fallback
         if (shareLink) {
           shareLink.value = text;
           shareLink.focus();
