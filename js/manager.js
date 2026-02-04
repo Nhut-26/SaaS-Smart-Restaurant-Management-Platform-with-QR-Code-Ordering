@@ -652,6 +652,11 @@ async function renderTableReservation() {
                 <div class="table-grid" id="tableGridContainer"></div>
             </div>
             <div class="layout-right">
+                
+                <div id="bill-info-panel" style="display: none; background: white; padding: 20px; border-radius: 12px; box-shadow: var(--shadow); margin-bottom: 20px; border-left: 5px solid var(--manager-primary);">
+                    <h3 style="margin-top: 0; color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px;">Chi tiết hóa đơn</h3>
+                    <div id="bill-content"></div>
+                </div>
                 <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: var(--shadow); height: fit-content;">
                     <h3 style="margin-bottom: 15px; font-size: 16px; text-transform: uppercase; color: #888;">Danh sách đặt chỗ</h3>
                     <div id="reservationList"></div>
@@ -800,6 +805,8 @@ window.handleTableClick = function(tableId) {
                 <p style="font-size:16px; color:#636e72; font-style: italic;">Xác nhận khách đã hoàn tất thanh toán và dọn bàn?</p>
             </div>
         `;
+
+        showTableBillInfo(tableId);
 
         showUniversalModal("Trả bàn", bodyHtml, async () => {
             try {
@@ -1143,6 +1150,93 @@ window.processImport = async function(mode) {
     } catch (err) {
         alert("Lỗi khi nhập: " + err.message);
         console.error(err);
+    }
+};
+
+window.showTableBillInfo = async function(tableId) {
+    const panel = document.getElementById("bill-info-panel");
+    const contentDiv = document.getElementById("bill-content");
+    
+    const table = allTables.find(t => t.id == tableId);
+
+    if (!table || table.status !== 'occupied') {
+        if(panel) panel.style.display = "none";
+        return;
+    }
+
+    if(panel) panel.style.display = "block";
+    if(contentDiv) contentDiv.innerHTML = "<p>Đang tải giá tiền...</p>";
+
+    try {
+        const { data: invoice, error } = await supabaseClient
+            .from('invoices')
+            .select('*')
+            .eq('table_id', tableId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (!invoice) {
+            contentDiv.innerHTML = `<p style="color:#999; font-style:italic">Chưa có hóa đơn.</p>`;
+            contentDiv.innerHTML += `
+                <button onclick="freeUpTable('${tableId}')" class="btn-gray" style="width:100%; margin-top:5px; font-size: 12px;">
+                    <i class="fas fa-redo"></i> Trả bàn (Reset)
+                </button>`;
+            return;
+        }
+
+        const isPaid = invoice.payment_status === 'paid';
+        const amount = Number(invoice.sub_total || 0).toLocaleString('vi-VN');
+        const color = isPaid ? '#2ecc71' : '#e74c3c'; // Xanh hoặc Đỏ
+        
+        let html = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span style="font-weight:bold; font-size:16px;">${amount} đ</span>
+                <span style="color:${color}; font-weight:bold; font-size:12px; border:1px solid ${color}; padding:2px 6px; border-radius:4px;">
+                    ${isPaid ? 'PAID' : 'UNPAID'}
+                </span>
+            </div>
+        `;
+
+        if (!isPaid) {
+            html += `
+                <button onclick="manualConfirmPay('${invoice.id}', '${tableId}')" 
+                        class="btn-green" style="width:100%; margin-bottom:10px; font-size:13px;">
+                    <i class="fas fa-check"></i> Xác nhận đã thu tiền
+                </button>
+                <div style="font-size:11px; color:#666; text-align:center;">
+                </div>
+            `;
+        } else {
+            html += `
+                    <i class="fas fa-door-open"></i> Đã thanh toán
+            `;
+        }
+
+        contentDiv.innerHTML = html;
+
+    } catch (err) {
+        console.error(err);
+        contentDiv.innerHTML = "Lỗi tải bill.";
+    }
+};
+
+window.manualConfirmPay = async function(invoiceId, tableId) {
+    if(!confirm("Xác nhận khách đã thanh toán tiền mặt/chuyển khoản?")) return;
+    
+    try {
+        const { error } = await supabaseClient
+            .from('invoices')
+            .update({ payment_status: 'paid' })
+            .eq('id', invoiceId);
+            
+        if(error) throw error;
+        showTableBillInfo(tableId);
+        
+    } catch (err) {
+        alert("Lỗi update: " + err.message);
     }
 };
 

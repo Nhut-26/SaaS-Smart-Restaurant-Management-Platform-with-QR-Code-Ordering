@@ -914,3 +914,4 @@ button { background-color: var(--manager-primary); }
     transition: 0.2s;
 }
 .btn-excel:hover { background-color: #1a5c38; transform: translateY(-2px); }
+
