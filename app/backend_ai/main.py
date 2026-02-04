@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from groq import Groq # Import Groq
 
+
 # Import module AI Agent
 from app.modules.chatbot.ai_agent import FoodChatAgent
 from app.utils.memory import ChatMemory
@@ -15,6 +16,10 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# 0. Cấu hình Weather API
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+
 
 # 1. Cấu hình Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL")

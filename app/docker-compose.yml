@@ -7,7 +7,7 @@ services:
     
     # Chỉ đường dẫn đến thư mục chứa Dockerfile
     build: 
-      context: ./backend_ai
+      context: ./app/backend_ai
       dockerfile: Dockerfile
     
     # Ánh xạ cổng: Máy thật (8000) -> Docker (8000)
@@ -16,11 +16,11 @@ services:
     
     # Quan trọng: Đồng bộ code từ máy bạn vào Docker theo thời gian thực
     volumes:
-      - ./backend_ai:/app
+      - ./app/backend_ai:/app
     
     # Nạp biến môi trường từ file .env (Bảo mật API Key)
     env_file:
-      - .env
+      - ./app/backend_ai/app:/.env
     
     # Tự động khởi động lại nếu bị lỗi
     restart: always
