@@ -13,7 +13,7 @@ const db = window.supabase.createClient(
     const { data: { session }, error } = await db.auth.getSession();
 
     if (error || !session) {
-        window.location.replace("../Login/loginAdmin.html");
+        window.location.replace("../Login/index.html");
         return;
     }
 })();
@@ -27,7 +27,7 @@ async function checkAuth() {
     const { data: { session } } = await db.auth.getSession();
 
     if (!session) {
-        window.location.href = "../Login/login.html";
+        window.location.href = "../Login/index.html";
 
         return;
     }

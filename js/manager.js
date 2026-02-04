@@ -2564,7 +2564,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             localStorage.clear();
             sessionStorage.clear();
-            window.location.replace("../Login/loginManager.html");
+            window.location.replace("../loginManager/index.html");
         }
     });
 });
