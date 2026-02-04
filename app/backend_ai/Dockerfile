@@ -1,22 +1,21 @@
-﻿# app/backend_ai/Dockerfile
+﻿# Sử dụng Python 3.9 (hoặc phiên bản bạn đang dùng)
 FROM python:3.9-slim
 
-# Đặt thư mục làm việc là /workspace để chứa folder 'app' bên trong
-WORKDIR /workspace
+# Thiết lập thư mục làm việc BÊN TRONG container
+WORKDIR /app
+
+# --- SỬA LỖI Ở ĐÂY ---
+# Vì Root Directory là backend_ai, nên chỉ cần copy file ngay tại đó
+COPY requirements.txt .
 
 # Cài đặt thư viện
-COPY app/backend_ai/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy TOÀN BỘ thư mục 'app' vào trong Docker
-# (Để main.py có thể import app.modules...)
-COPY app/ ./app/
+# Copy toàn bộ code còn lại vào container
+COPY . .
 
-# Thiết lập biến môi trường để Python nhận diện module
-ENV PYTHONPATH=/workspace
-
-# Mở port 8000
+# Mở cổng 8000
 EXPOSE 8000
 
-# Chạy server từ thư mục gốc
-CMD ["python", "app/backend_ai/main.py"]
+# Lệnh chạy server (dùng uvicorn)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -14,7 +14,7 @@ class FoodChatAgent:
         self.client = groq_client 
         self.supabase = supabase_client
         self.executor = ThreadPoolExecutor(max_workers=20) 
-        self.weather_api_key = "2b9e63789647d6926315f0142b785871"
+        self.weather_api_key = "a5bcf56a395da987b94e87d54c98017b"
         self.engine = RecommendationEngine(supabase_client)
 
         # --- NLU PROMPT CHUẨN ĐỒNG BỘ VỚI FRONTEND ---
