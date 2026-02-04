@@ -274,7 +274,14 @@ window.openMenuModal = function(item = null) {
             <div style="flex: 1; min-width: 250px;">
                 <div class="form-group">
                     <label>Tên món</label>
-                    <input type="text" id="m_name" value="${item ? item.food_name : ''}" class="form-control">
+                    <label>Tên món</label>
+                    <input 
+                        type="text" 
+                        id="m_name"
+                        value="${item ? item.food_name : ''}"
+                        class="form-control"
+                        oninput="autoGenerateImage()"
+                    />
                 </div>
                 <div class="form-group">
                     <label>Giá bán (VNĐ)</label>
@@ -306,8 +313,18 @@ window.openMenuModal = function(item = null) {
                     <label>Hình ảnh món ăn</label>
                     <div style="margin-bottom: 10px; text-align: center; background: #f9f9f9; padding: 10px; border-radius: 8px;">
                         <img id="preview_img" src="${currentImageSrc}" style="width: 100%; max-height: 200px; object-fit: contain;">
+                        <input type="hidden" id="auto_image_url" value="${currentImageSrc}">
                     </div>
-                    <input type="file" id="m_image_file" accept="image/*" onchange="document.getElementById('preview_img').src = window.URL.createObjectURL(this.files[0])">
+                    <input
+                        type="file"
+                        id="m_image_file"
+                        accept="image/*"
+                        onchange="
+                            document.getElementById('preview_img').src = window.URL.createObjectURL(this.files[0]);
+                            document.getElementById('preview_img').style.display='block';
+                            document.getElementById('auto_image_url').value='';
+                        "
+                    >
                 </div>
                 <div class="form-group">
                     <label>Mô tả chi tiết</label>
@@ -333,7 +350,9 @@ window.openMenuModal = function(item = null) {
             
             // Xử lý upload ảnh
             const fileInput = document.getElementById("m_image_file");
-            let imageUrl = item ? item.image : null; // Giữ link ảnh cũ mặc định
+            let imageUrl =
+                document.getElementById("auto_image_url").value ||
+               (item ? item.image : null);// Giữ link ảnh cũ mặc định
 
             if (fileInput.files.length > 0) {
                 // Gọi hàm uploadImage đã có sẵn ở cuối file
@@ -2089,3 +2108,28 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 });
+let typingTimer;
+
+function autoGenerateImage() {
+  clearTimeout(typingTimer);
+
+  const name = document.getElementById("m_name")?.value.trim();
+  const img = document.getElementById("preview_img");
+  const autoInput = document.getElementById("auto_image_url");
+  const fileInput = document.getElementById("m_image_file");
+
+  if (!name || !img || !autoInput) return;
+
+  // Nếu đã upload ảnh thì không auto
+  if (fileInput && fileInput.files.length > 0) return;
+
+  typingTimer = setTimeout(() => {
+    const url =
+      "https://source.unsplash.com/600x400/?food," +
+      encodeURIComponent(name);
+
+    img.src = url;
+    img.style.display = "block";
+    autoInput.value = url;
+  }, 600);
+}
