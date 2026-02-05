@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import {
+  supabase,
   getInvoiceByBookingId,
   getInvoiceDetails,
   payInvoicePartial,
@@ -40,43 +41,69 @@ const InvoiceScreen = ({ navigation, route }) => {
     loadInvoice();
   }, [bookingId]);
 
-  const loadInvoice = async () => {
-    try {
-      setLoading(true);
-      const targetBookingId = bookingId || activeBooking?.id;
-      console.log('📋 Đang tải hóa đơn cho booking:', targetBookingId);
+  // Trong InvoiceScreen.js, sửa hàm loadInvoice
+const loadInvoice = async () => {
+  try {
+    setLoading(true);
+    const targetBookingId = bookingId || activeBooking?.id;
+    
+    if (!targetBookingId) {
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin booking');
+      navigation.goBack();
+      return;
+    }
+    
+    console.log('📋 Đang tải hóa đơn cho booking:', targetBookingId);
 
-      const existingInvoice = await getInvoiceByBookingId(targetBookingId);
+    // Lấy invoice hiện có
+    const existingInvoice = await getInvoiceByBookingId(targetBookingId);
 
-      let invoiceData;
+    if (existingInvoice.error) {
+      console.error('❌ Lỗi khi lấy invoice:', existingInvoice.error);
+      Alert.alert('Lỗi', 'Không thể tải hóa đơn');
+      return;
+    }
 
-      if (existingInvoice.success && existingInvoice.data) {
-        console.log('✅ Đã có invoice:', existingInvoice.data.invoice_number);
-        invoiceData = existingInvoice.data;
-      } else {
-        console.log('➕ Tạo invoice mới từ booking');
-        const createResult = await createInvoiceFromBooking(targetBookingId, {
-          customer_name: user?.full_name,
-          customer_phone: user?.phone,
-          customer_email: user?.email,
-          notes: 'Tạo tự động từ hệ thống'
-        });
+    let invoiceData;
+    let shouldCreateNewInvoice = false;
 
-        if (!createResult.success) {
-          Alert.alert('Lỗi', createResult.error || 'Không thể tạo hóa đơn');
-          navigation.goBack();
-          return;
-        }
+    // Kiểm tra nếu có invoice tồn tại
+    if (existingInvoice.success && existingInvoice.data) {
+      console.log('✅ Đã có invoice:', existingInvoice.data.invoice_number);
+      invoiceData = existingInvoice.data;
+    } else {
+      console.log('➕ Không có invoice, tạo mới từ booking');
+      shouldCreateNewInvoice = true;
+    }
 
-        invoiceData = createResult.data;
+    // Nếu cần tạo invoice mới
+    if (shouldCreateNewInvoice) {
+      const createResult = await createInvoiceFromBooking(targetBookingId, {
+        customer_name: user?.full_name || user?.name || 'Khách hàng',
+        customer_phone: user?.phone || '',
+        customer_email: user?.email || '',
+        notes: 'Tạo tự động từ hệ thống'
+      });
+
+      if (!createResult.success) {
+        Alert.alert('Lỗi', createResult.error || 'Không thể tạo hóa đơn');
+        navigation.goBack();
+        return;
       }
 
+      invoiceData = createResult.data;
+    }
+
+    // Lấy chi tiết invoice
+    if (invoiceData && invoiceData.id) {
+      console.log('🔍 Lấy chi tiết invoice:', invoiceData.id);
       const detailResult = await getInvoiceDetails(invoiceData.id);
 
       if (detailResult.success) {
         const fullInvoice = detailResult.data;
         setInvoice(fullInvoice);
 
+        // Xử lý order items
         const bookingItems = fullInvoice.bookings?.order_items || [];
         const formattedItems = bookingItems.map(item => ({
           id: item.id,
@@ -94,25 +121,29 @@ const InvoiceScreen = ({ navigation, route }) => {
         }
 
         console.log(`✅ Đã tải ${formattedItems.length} món ăn cho invoice`);
-
-        console.log('📊 Chi tiết tính toán invoice:', {
-          sub_total: fullInvoice.sub_total,
-          tax_amount: fullInvoice.tax_amount,
-          service_fee: fullInvoice.service_fee,
-          discount_amount: fullInvoice.discount_amount,
-          rank_discount_amount: fullInvoice.rank_discount_amount,
-          final_amount: fullInvoice.final_amount,
-          points_earned: fullInvoice.points_earned
-        });
       } else {
-        Alert.alert('Lỗi', 'Không thể lấy chi tiết hóa đơn');
+        console.error('❌ Lỗi lấy chi tiết invoice:', detailResult.error);
+        // Fallback: sử dụng dữ liệu invoice cơ bản
+        setInvoice(invoiceData);
+        setSubtotal(invoiceData.sub_total || 0);
       }
-    } catch (error) {
-      console.error('❌ Lỗi load invoice:', error);
-      Alert.alert('Lỗi', 'Không thể tải hóa đơn');
-    } finally {
-      setLoading(false);
+    } else {
+      // Nếu không có invoiceData.id
+      console.error('❌ Invoice không có ID');
+      Alert.alert('Lỗi', 'Không thể tạo hóa đơn');
     }
+  } catch (error) {
+    console.error('❌ Lỗi load invoice:', error);
+    Alert.alert('Lỗi', 'Không thể tải hóa đơn');
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // Thêm hàm kiểm tra UUID
+  const isValidUUID = (uuid) => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuid && uuidRegex.test(uuid);
   };
 
   const handlePayment = async () => {

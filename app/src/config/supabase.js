@@ -20,9 +20,11 @@ export const testConnection = async () => {
   }
 };
 
+// Hàm kiểm tra UUID hợp lệ
 const isValidUUID = (uuid) => {
+  if (!uuid) return false;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return uuid && uuidRegex.test(uuid);
+  return uuidRegex.test(uuid);
 };
 
 const getRestaurantImage = (cuisineType) => {
@@ -148,7 +150,7 @@ export const getOrCreateTableId = async (restaurantId, tableNameOrId, capacity =
 export const setTableStatusSafe = async (tableId, status) => {
   try {
     if (!tableId) return { success: false, error: 'Missing tableId' };
-    const payload = { status, updated_at: new Date().toISOString() };
+    const payload = { status };
     console.log(`🔄 setTableStatusSafe: updating table ${tableId} -> ${status}`);
     const { data, error } = await supabase
       .from('tables')
@@ -157,36 +159,13 @@ export const setTableStatusSafe = async (tableId, status) => {
       .select()
       .single();
 
-    if (!error) {
-      console.log(`✅ Table ${tableId} updated to ${status}`);
-      return { success: true, data };
+    if (error) {
+      console.error(`❌ setTableStatusSafe failed for table ${tableId}:`, error);
+      return { success: false, error: error.message || String(error) };
     }
 
-    if (error && (error.code === 'PGRST204' || (error.message || '').includes('updated_at'))) {
-      try {
-        console.warn(`⚠️ setTableStatusSafe: retrying update for table ${tableId} without updated_at due to schema issue`);
-        const { data: d2, error: e2 } = await supabase
-          .from('tables')
-          .update({ status })
-          .eq('id', tableId)
-          .select()
-          .single();
-
-        if (e2) {
-          console.error(`❌ setTableStatusSafe retry failed for table ${tableId}:`, e2);
-          return { success: false, error: e2.message || String(e2) };
-        }
-
-        console.log(`✅ setTableStatusSafe succeeded for table ${tableId} (without updated_at)`);
-        return { success: true, data: d2, warning: 'Updated without updated_at due to schema mismatch' };
-      } catch (ex) {
-        console.error(`❌ setTableStatusSafe exception for table ${tableId}:`, ex);
-        return { success: false, error: ex.message || String(ex) };
-      }
-    }
-
-    console.error(`❌ setTableStatusSafe failed for table ${tableId}:`, error);
-    return { success: false, error: error.message || String(error) };
+    console.log(`✅ Table ${tableId} updated to ${status}`);
+    return { success: true, data };
   } catch (err) {
     return { success: false, error: err.message || String(err) };
   }
@@ -1827,14 +1806,26 @@ export const calculatePointsAndDiscount = async (customerId, amount) => {
   }
 };
 
+// Hàm tạo invoice từ booking
 export const createInvoiceFromBooking = async (bookingId, invoiceData = {}) => {
   try {
     console.log(`🧾 Tạo invoice cho booking: ${bookingId}`);
 
+    // Kiểm tra bookingId hợp lệ
+    if (!bookingId || !isValidUUID(bookingId)) {
+      console.error('❌ BookingId không hợp lệ:', bookingId);
+      return { success: false, error: 'BookingId không hợp lệ' };
+    }
+
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(`
-        restaurants:restaurant_id (id, name, tenant_id ),
+        user_id,
+        restaurant_id,
+        table_id,
+        customer_name,
+        phone,
+        restaurants:restaurant_id (id, name),
         tables:table_id (id, table_name),
         profiles:user_id (id, full_name, phone, email, current_rank_id)
       `)
@@ -1988,13 +1979,7 @@ export const createInvoiceFromBooking = async (bookingId, invoiceData = {}) => {
 
     return {
       success: true,
-      data: {
-        ...invoice,
-        booking: {
-          ...booking,
-          order_items: orderItems || []
-        }
-      },
+      data: invoice,
       message: `Đã tạo hóa đơn ${invoiceNumber}`
     };
   } catch (error) {
@@ -2010,7 +1995,7 @@ export const upsertInvoiceSubTotal = async (bookingId, sub_total) => {
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(`
-        restaurants:restaurant_id (tenant_id),
+        restaurants:restaurant_id (id, name),
         profiles:user_id (id, full_name, phone, email, current_rank_id)
       `)
       .eq('id', bookingId)
@@ -2051,7 +2036,6 @@ export const upsertInvoiceSubTotal = async (bookingId, sub_total) => {
 
     const invoiceNumber = `INV${Date.now()}${Math.random().toString(36).substr(2,6).toUpperCase()}`;
     const newInvoice = {
-      tenant_id: booking.restaurants?.tenant_id || booking.restaurant_id,
       customer_id: booking.user_id || booking.profiles?.id || null,
       invoice_number: invoiceNumber,
       sub_total: Number(sub_total || 0),
@@ -2087,11 +2071,44 @@ export const upsertInvoiceSubTotal = async (bookingId, sub_total) => {
   }
 };
 
+// Trong supabase.js, sửa hàm getInvoiceByBookingId
 export const getInvoiceByBookingId = async (bookingId) => {
   try {
+    // KIỂM TRA bookingId TRƯỚC KHI THỰC HIỆN TRUY VẤN
+    if (!bookingId) {
+      console.warn('⚠️ getInvoiceByBookingId: bookingId là null hoặc undefined');
+      return { success: true, data: null };
+    }
+    
+    // Kiểm tra nếu bookingId là 'undefined' (string)
+    if (bookingId === 'undefined' || bookingId === 'null') {
+      console.warn(`⚠️ getInvoiceByBookingId: bookingId là string "${bookingId}"`);
+      return { success: true, data: null };
+    }
+    
+    // Kiểm tra UUID hợp lệ
+    if (!isValidUUID(bookingId)) {
+      console.warn(`⚠️ getInvoiceByBookingId: bookingId không phải UUID hợp lệ: ${bookingId}`);
+      return { success: true, data: null };
+    }
+
+    console.log(`🔍 Lấy invoice cho booking: ${bookingId}`);
+
     const { data, error } = await supabase
       .from('invoices')
       .select(`
+        id,
+        invoice_number,
+        sub_total,
+        discount_amount,
+        tax_amount,
+        service_fee,
+        rank_discount_amount,
+        rank_discount_percentage,
+        final_amount,
+        paid_amount,
+        payment_status,
+        points_earned,
         customer_ranks (*),
         bookings (
           id,
@@ -2101,6 +2118,16 @@ export const getInvoiceByBookingId = async (bookingId) => {
           tables (
             table_name,
             capacity
+          ),
+          order_items (
+            id,
+            food_id,
+            quantity,
+            price_at_time,
+            menus:food_id (
+              food_name,
+              price
+            )
           )
         )
       `)
@@ -2108,16 +2135,20 @@ export const getInvoiceByBookingId = async (bookingId) => {
       .limit(1)
       .single();
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
+      // Nếu lỗi là "PGRST116" (không tìm thấy bản ghi), trả về null thay vì lỗi
+      if (error.code === 'PGRST116') {
+        console.log(`ℹ️ Không tìm thấy invoice cho booking ${bookingId}`);
+        return { success: true, data: null };
+      }
+      
       console.error('❌ Lỗi lấy invoice:', error);
       return { success: false, error: error.message };
     }
 
-    if (error && error.code === 'PGRST116') {
-      return { success: true, data: null };
-    }
-
+    console.log(`✅ Tìm thấy invoice: ${data?.invoice_number || 'N/A'}`);
     return { success: true, data };
+
   } catch (error) {
     console.error('❌ Lỗi trong getInvoiceByBookingId:', error);
     return { success: false, error: error.message };
@@ -2188,6 +2219,21 @@ export const getInvoiceDetails = async (invoiceId) => {
     const { data, error } = await supabase
       .from('invoices')
       .select(`
+        id,
+        invoice_number,
+        sub_total,
+        discount_amount,
+        tax_amount,
+        service_fee,
+        rank_discount_amount,
+        rank_discount_percentage,
+        final_amount,
+        paid_amount,
+        payment_status,
+        points_earned,
+        issued_at,
+        updated_at,
+        notes,
         customer_ranks (*),
         bookings (
           id,
@@ -2198,7 +2244,11 @@ export const getInvoiceDetails = async (invoiceId) => {
             table_name
           ),
           order_items (
-            menus (
+            id,
+            food_id,
+            quantity,
+            price_at_time,
+            menus:food_id (
               food_name,
               price
             )
@@ -2213,7 +2263,7 @@ export const getInvoiceDetails = async (invoiceId) => {
       return { success: false, error: error.message };
     }
 
-    console.log(`✅ Lấy chi tiết invoice thành công: ${data.invoice_number}`);
+    console.log('✅ Lấy chi tiết invoice thành công:', data?.id, data?.invoice_number);
     try {
       if ((!data.sub_total || Number(data.sub_total) === 0) && data.bookings?.order_items?.length) {
         let computedSubTotal = 0;
@@ -2471,14 +2521,42 @@ export const checkAndUpdateOverdueInvoices = async () => {
     return { success: false, error: error.message };
   }
 };
+// Trong supabase.js, sửa hàm payInvoice
 export const payInvoice = async (invoiceId, paymentData, options = {}) => {
   try {
+    // KIỂM TRA invoiceId CÓ HỢP LỆ KHÔNG TRƯỚC KHI TIẾP TỤC
+    if (!invoiceId) {
+      console.error('❌ payInvoice: invoiceId là null hoặc undefined');
+      return { 
+        success: false, 
+        error: 'Thiếu ID hóa đơn' 
+      };
+    }
+
+    // Kiểm tra nếu invoiceId là 'undefined' (string)
+    if (invoiceId === 'undefined' || invoiceId === 'null') {
+      console.error('❌ payInvoice: invoiceId là string không hợp lệ:', invoiceId);
+      return { 
+        success: false, 
+        error: 'ID hóa đơn không hợp lệ' 
+      };
+    }
+
+    // Kiểm tra UUID hợp lệ
+    if (!isValidUUID(invoiceId)) {
+      console.error('❌ payInvoice: invoiceId không phải UUID hợp lệ:', invoiceId);
+      return { 
+        success: false, 
+        error: 'Định dạng ID hóa đơn không hợp lệ' 
+      };
+    }
+
     console.log(`💰 Thanh toán invoice: ${invoiceId}`, { options });
 
     const {
-      completeBooking = true,    
-      clearOrderItems = true,  
-      addPoints = true,         
+      completeBooking = true,
+      clearOrderItems = true,
+      addPoints = true,
     } = options;
 
     const { data: invoice, error: invoiceError } = await supabase
@@ -2487,26 +2565,21 @@ export const payInvoice = async (invoiceId, paymentData, options = {}) => {
       .eq('id', invoiceId)
       .single();
 
-    if (invoiceError) {
+    if (invoiceError || !invoice) {
       console.error('❌ Lỗi lấy invoice:', invoiceError);
-      return { success: false, error: invoiceError.message };
+      return { success: false, error: invoiceError?.message || 'Không tìm thấy invoice' };
     }
 
-    const paymentAmount = paymentData.amount_actual ||
-                         paymentData.amount ||
-                         (completeBooking ? invoice.final_amount : 0); 
+    const paymentAmount = paymentData.amount_actual || paymentData.amount || (completeBooking ? invoice.final_amount : 0);
 
-    if (!paymentAmount) {
-      return {
-        success: false,
-        error: 'Vui lòng nhập số tiền thanh toán'
-      };
+    if (!paymentAmount || Number(paymentAmount) <= 0) {
+      return { success: false, error: 'Vui lòng nhập số tiền thanh toán' };
     }
 
-    const newPaidAmount = (invoice.paid_amount || 0) + paymentAmount;
+    const newPaidAmount = (invoice.paid_amount || 0) + Number(paymentAmount);
 
-    let newPaymentStatus = invoice.payment_status;
-    if (newPaidAmount >= invoice.final_amount) {
+    let newPaymentStatus = invoice.payment_status || 'unpaid';
+    if (newPaidAmount >= (invoice.final_amount || 0)) {
       newPaymentStatus = 'paid';
     } else if (newPaidAmount > 0) {
       newPaymentStatus = 'partial';
@@ -2536,7 +2609,6 @@ export const payInvoice = async (invoiceId, paymentData, options = {}) => {
       try {
         const bookingResult = await updateBooking(invoice.booking_id, {
           status: 'completed',
-          completed_at: new Date().toISOString(),
         });
 
         if (bookingResult && bookingResult.success) {
@@ -2564,20 +2636,24 @@ export const payInvoice = async (invoiceId, paymentData, options = {}) => {
       }
 
       if (clearOrderItems) {
-        const { error: deleteError } = await supabase
-          .from('order_items')
-          .delete()
-          .eq('booking_id', invoice.booking_id);
+        try {
+          const { error: deleteError } = await supabase
+            .from('order_items')
+            .delete()
+            .eq('booking_id', invoice.booking_id);
 
-        if (!deleteError) {
-          afterPaymentActions.push('order_items_cleared');
+          if (!deleteError) {
+            afterPaymentActions.push('order_items_cleared');
+          }
+        } catch (delErr) {
+          console.warn('⚠️ Không thể xóa order_items:', delErr.message || delErr);
         }
       }
     }
 
     let pointsAdded = 0;
     if (addPoints && invoice.customer_id) {
-      const pointsToAdd = Math.floor(paymentAmount / 10000);
+      const pointsToAdd = Math.floor(Number(paymentAmount) / 10000);
       if (pointsToAdd > 0) {
         const pointsResult = await updateCustomerPointsAndRank(invoice.customer_id, pointsToAdd);
         if (pointsResult.success) {
@@ -2592,14 +2668,14 @@ export const payInvoice = async (invoiceId, paymentData, options = {}) => {
         .from('payment_logs')
         .insert([{
           invoice_id: invoiceId,
-          amount: paymentAmount,
+          amount: Number(paymentAmount),
           reference_id: paymentData.reference_id || null,
           payment_type: completeBooking ? 'full_payment' : 'partial_payment',
           status: 'completed',
           created_at: new Date().toISOString(),
         }]);
     } catch (logError) {
-      console.warn('⚠️ Không thể ghi log thanh toán:', logError.message);
+      console.warn('⚠️ Không thể ghi log thanh toán:', logError.message || logError);
     }
 
     return {
@@ -2607,18 +2683,14 @@ export const payInvoice = async (invoiceId, paymentData, options = {}) => {
       data: {
         invoice: updatedInvoice,
         payment: {
-          amount: paymentAmount,
+          amount: Number(paymentAmount),
           status: newPaymentStatus,
           type: completeBooking ? 'full_payment' : 'partial_payment',
         },
         points_added: pointsAdded,
         after_payment_actions: afterPaymentActions,
       },
-      message: newPaymentStatus === 'paid'
-        ? (completeBooking
-            ? 'Thanh toán thành công! Booking đã kết thúc.'
-            : 'Thanh toán thành công!')
-        : 'Thanh toán một phần thành công',
+      message: newPaymentStatus === 'paid' ? (completeBooking ? 'Thanh toán thành công! Booking đã kết thúc.' : 'Thanh toán thành công!') : 'Thanh toán một phần thành công',
     };
   } catch (error) {
     console.error('❌ Lỗi trong payInvoice:', error);
@@ -2671,7 +2743,6 @@ export const createAndPayInvoiceForBooking = async (bookingId, paymentData) => {
       try {
         const bookingResult = await updateBooking(bookingId, {
           status: 'completed',
-          completed_at: new Date().toISOString(),
         });
 
         if (!bookingResult || !bookingResult.success) {
@@ -2819,13 +2890,18 @@ export const createBooking = async (bookingData) => {
       status: willAutoConfirm ? 'confirmed' : 'pending',
     };
 
+    console.log('📤 Đang tạo booking với payload:', payload);
+
     const { data, error } = await supabase
       .from('bookings')
       .insert([payload])
       .select(`
+        *,
         restaurants:restaurant_id (
           id,
-          name
+          name,
+          cuisine_type,
+          image_url
         ),
         tables:table_id (
           id,
@@ -2841,12 +2917,18 @@ export const createBooking = async (bookingData) => {
       return { success: false, error: error.message || String(error) };
     }
 
+    // CẬP NHẬT TRẠNG THÁI BÀN THÀNH 'occupied'
     if (willAutoConfirm && data && data.table_id) {
       try {
+        console.log(`🔄 Đang cập nhật trạng thái bàn ${data.table_id} -> occupied`);
         const res = await setTableStatusSafe(data.table_id, 'occupied');
-        if (!res.success) console.warn('⚠️ Không thể cập nhật trạng thái bàn sau khi xác nhận:', res.error);
+        if (!res.success) {
+          console.error('❌ Không thể cập nhật trạng thái bàn:', res.error);
+        } else {
+          console.log('✅ Đã cập nhật trạng thái bàn thành occupied');
+        }
       } catch (err) {
-        console.warn('⚠️ Không thể cập nhật trạng thái bàn sau khi xác nhận:', err.message || err);
+        console.error('❌ Lỗi khi cập nhật trạng thái bàn:', err.message || err);
       }
     }
 

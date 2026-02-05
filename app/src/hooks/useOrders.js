@@ -31,140 +31,85 @@ const useOrders = (activeBookingId) => {
   }, []);
 
   const loadOrders = useCallback(async () => {
+    console.log('🔄 useOrders: Bắt đầu loadOrders');
+    console.log('📊 activeBooking:', activeBooking);
+    
     if (!activeBooking) {
+      console.log('❌ Không có activeBooking, set orders rỗng');
       setOrders([]);
       return;
     }
 
     try {
-      console.log('🔄 Đang load orders cho booking:', activeBooking.id);
+      console.log(`🔍 Active booking status: ${activeBooking.status}`);
+      console.log(`🔍 Active booking id: ${activeBooking.id}`);
+      
+      // KIỂM TRA NẾU BOOKING KHÔNG PHẢI 'confirmed'
+      if (activeBooking.status !== 'confirmed') {
+        console.warn(`⚠️ Booking không phải 'confirmed', status: ${activeBooking.status}`);
+      }
 
       let allOrders = [];
 
-      try {
-        if (activeBooking.order_items && activeBooking.order_items.length > 0) {
-          console.log(`📦 Booking có ${activeBooking.order_items.length} order_items`);
+      // XỬ LÝ ORDER_ITEMS TỪ ACTIVE BOOKING
+      if (activeBooking.order_items && activeBooking.order_items.length > 0) {
+        console.log(`📦 Booking có ${activeBooking.order_items.length} order_items`);
+        
+        const ordersFromItems = activeBooking.order_items.map(item => {
+          const itemName = item.menus?.food_name || item.food_name || 'Món không tên';
+          const itemPrice = item.price_at_time || item.menus?.price || 0;
+          const itemQuantity = item.quantity || 1;
+          const orderTotal = itemPrice * itemQuantity;
+          const itemDate = item.created_at || activeBooking.booking_time || activeBooking.created_at;
 
-          const ordersFromItems = activeBooking.order_items.map(item => {
-            const itemName = item.menus?.food_name || item.food_name || 'Món không tên';
-            const itemPrice = item.price_at_time || item.menus?.price || 0;
-            const itemQuantity = item.quantity || 1;
-            const orderTotal = itemPrice * itemQuantity;
-
-            const itemDate = item.created_at || activeBooking.booking_time || activeBooking.created_at;
-
-            return {
-              id: item.id,
-              orderNumber: `ITEM${String(item.id).substring(0, 8)}`,
-              total: orderTotal,
-              restaurantName: activeBooking.restaurantName ||
-                             activeBooking.restaurants?.name ||
-                             activeBooking.restaurants?.restaurant_name ||
-                             'Nhà hàng',
-              items: [{
-                id: item.id,
-                food_id: item.food_id,
-                name: itemName,
-                quantity: itemQuantity,
-                price: itemPrice,
-                category: item.menus?.category,
-                description: item.menus?.description,
-              }],
-              tableNumber: activeBooking.tableNumber ||
-                          activeBooking.tables?.table_name ||
-                          activeBooking.table_name ||
-                          'Bàn 1',
-              restaurantId: activeBooking.restaurant_id,
-              bookingId: activeBooking.id,
-              isBookingOrder: true,
-              source: 'booking',
-              date: itemDate,
-              paymentStatus: 'pending',
-              status: 'Chờ thanh toán',
-              type: 'order_item',
-              canCancel: true,
-            };
-          });
-
-          allOrders = [...allOrders, ...ordersFromItems];
-          console.log(`✅ Đã tạo ${ordersFromItems.length} orders từ order_items`);
-        } else {
-          console.log('ℹ️ Booking không có order_items');
-        }
-      } catch (err) {
-        console.warn('⚠️ Lỗi khi build orders từ booking:', err.message || err);
-      }
-
-      try {
-        if (activeBooking.completed_orders && activeBooking.completed_orders.length > 0) {
-          const completedOrders = activeBooking.completed_orders.map(comp => ({
-            id: comp.id || `completed_${Date.now()}`,
-            orderNumber: comp.order_number || `ORDER${String(comp.id).substring(0, 8)}`,
-            total: comp.total || 0,
-            restaurantName: activeBooking.restaurantName ||
-                           activeBooking.restaurants?.name ||
+          return {
+            id: item.id,
+            orderNumber: `ITEM${String(item.id).substring(0, 8)}`,
+            total: orderTotal,
+            restaurantName: activeBooking.restaurants?.name || 
+                           activeBooking.restaurantName || 
                            'Nhà hàng',
-            items: comp.items || [],
-            tableNumber: activeBooking.tableNumber ||
-                        activeBooking.tables?.table_name ||
+            items: [{
+              id: item.id,
+              food_id: item.food_id,
+              name: itemName,
+              quantity: itemQuantity,
+              price: itemPrice,
+              category: item.menus?.category,
+              description: item.menus?.description,
+            }],
+            tableNumber: activeBooking.tables?.table_name ||
+                        activeBooking.tableNumber ||
                         'Bàn 1',
             restaurantId: activeBooking.restaurant_id,
             bookingId: activeBooking.id,
             isBookingOrder: true,
-            source: 'completed',
-            date: comp.date || comp.created_at || new Date().toISOString(),
-            paymentStatus: 'paid',
-            status: 'Đã thanh toán',
-            type: 'completed_order',
-            canCancel: false,
-          }));
+            source: 'booking',
+            date: itemDate,
+            paymentStatus: 'pending',
+            status: 'Chờ thanh toán',
+            type: 'order_item',
+            canCancel: true,
+          };
+        });
 
-          allOrders = [...allOrders, ...completedOrders];
-          console.log(`✅ Đã thêm ${completedOrders.length} orders đã hoàn thành`);
-        }
-      } catch (err) {
-        console.warn('⚠️ Lỗi khi thêm completed orders:', err.message || err);
+        allOrders = [...allOrders, ...ordersFromItems];
+        console.log(`✅ Đã tạo ${ordersFromItems.length} orders từ order_items`);
       }
 
-      const ordersWithDetails = allOrders.map(order => {
-        if (!order.id) {
-          order.id = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        }
-
-        return {
-          ...order,
-          restaurantName: order.restaurantName ||
-                         activeBooking?.restaurantName ||
-                         activeBooking?.restaurants?.name ||
-                         'Nhà hàng',
-          orderNumber: order.orderNumber ||
-                      order.id?.substring(0, 8) ||
-                      `ORDER${Date.now().toString().slice(-6)}`,
-          total: order.total || 0,
-          date: order.date || new Date().toISOString(),
-          items: order.items || [],
-          paymentStatus: order.paymentStatus ||
-                        (order.status === 'Đã thanh toán' ? 'paid' : 'pending'),
-          status: order.status || 'Chờ xác nhận',
-          userName: user?.name || user?.full_name || 'Khách hàng',
-          userId: user?.id,
-          tableNumber: order.tableNumber ||
-                      activeBooking?.tableNumber ||
-                      activeBooking?.tables?.table_name ||
-                      'N/A',
-          restaurantId: order.restaurantId || activeBooking?.restaurant_id,
-        };
-      });
-
-      const sortedOrders = ordersWithDetails.sort((a, b) =>
+      // SẮP XẾP VÀ SET STATE
+      const sortedOrders = allOrders.sort((a, b) =>
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
 
-      setOrders(sortedOrders);
       console.log(`✅ Đã load ${sortedOrders.length} orders từ booking`);
+      console.log('📊 Orders data:', sortedOrders);
+      
+      setOrders(sortedOrders);
 
     } catch (error) {
       console.error('❌ Lỗi khi load orders:', error);
+      console.error('❌ Error stack:', error.stack);
       setOrders([]);
     }
   }, [activeBooking, user]);

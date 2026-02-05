@@ -41,11 +41,15 @@ export const BookingProvider = ({ children }) => {
     } else {
       setBookings([]);
       setActiveBooking(null);
+      setActiveInvoice(null);
     }
   }, [user?.id]);
 
   const loadBookings = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log('❌ Không có user, không thể load bookings');
+      return;
+    }
 
     try {
       console.log('🔄 Đang load bookings cho user:', user.id);
@@ -55,8 +59,19 @@ export const BookingProvider = ({ children }) => {
       const { data: userBookings, error } = await supabase
         .from('bookings')
         .select(`
-          tables:table_id (table_name),
-          restaurants:restaurant_id (id, name, cuisine_type, image_url),
+          *,
+          tables:table_id (
+            id,
+            table_name,
+            capacity,
+            status
+          ),
+          restaurants:restaurant_id (
+            id,
+            name,
+            cuisine_type,
+            image_url
+          ),
           order_items (
             id,
             food_id,
@@ -72,30 +87,35 @@ export const BookingProvider = ({ children }) => {
           )
         `)
         .eq('user_id', user.id)
-        .eq('status', 'confirmed')
+        .in('status', ['confirmed', 'pending'])
         .order('booking_time', { ascending: false });
 
-    if (error) {
-      console.error('❌ Lỗi load bookings từ Supabase:', error);
-      setError(error.message);
-      return;
-    }
-
-    console.log(`✅ Load được ${userBookings?.length || 0} bookings`);
-
-    if (userBookings) {
-      setBookings(userBookings);
-
-      const active = userBookings.find(b => b.status === 'confirmed');
-      if (active) {
-        console.log('🔍 Tìm thấy active booking:', active.id);
-
-        setActiveBooking(active);
-      } else {
-        console.log('ℹ️ Không tìm thấy active booking');
-        setActiveBooking(null);
+      if (error) {
+        console.error('❌ Lỗi load bookings từ Supabase:', error);
+        setError(error.message);
+        return;
       }
-    }
+
+      console.log(`✅ Load được ${userBookings?.length || 0} bookings`);
+
+      if (userBookings) {
+        setBookings(userBookings);
+
+        const active = userBookings.find(b => 
+          b.status === 'confirmed' || b.status === 'pending'
+        );
+        
+        if (active) {
+          console.log('🔍 Tìm thấy active booking:', active.id, 'status:', active.status);
+          setActiveBooking(active);
+          
+          await loadInvoiceForBooking(active.id);
+        } else {
+          console.log('ℹ️ Không tìm thấy active booking');
+          setActiveBooking(null);
+          setActiveInvoice(null);
+        }
+      }
     } catch (error) {
       console.error('❌ Lỗi khi load bookings:', error);
       setError(error.message);
@@ -106,6 +126,7 @@ export const BookingProvider = ({ children }) => {
 
   const loadInvoiceForBooking = async (bookingId) => {
     if (!bookingId) {
+      console.warn('⚠️ loadInvoiceForBooking: bookingId không hợp lệ');
       setActiveInvoice(null);
       return;
     }
@@ -115,9 +136,12 @@ export const BookingProvider = ({ children }) => {
 
       const result = await getInvoiceByBookingId(bookingId);
 
-      if (result.success && result.data) {
-        console.log('✅ Đã tải invoice:', result.data.invoice_number);
+      if (result.success && result.data && result.data.id) {
+        console.log('✅ Đã tải invoice:', result.data.id, 'invoice_number:', result.data.invoice_number || 'N/A');
         setActiveInvoice(result.data);
+      } else if (result.error) {
+        console.error('❌ Lỗi tải invoice:', result.error);
+        setActiveInvoice(null);
       } else {
         console.log('ℹ️ Chưa có invoice cho booking này');
         setActiveInvoice(null);
@@ -129,12 +153,19 @@ export const BookingProvider = ({ children }) => {
   };
 
   const loadOrderItemsForBooking = async (booking) => {
-    if (!booking?.id) return;
+    if (!booking?.id) {
+      console.warn('⚠️ loadOrderItemsForBooking: Booking không hợp lệ');
+      return [];
+    }
 
     try {
       const { data, error } = await supabase
         .from('order_items')
         .select(`
+          id,
+          food_id,
+          quantity,
+          price_at_time,
           menus:food_id (
             id,
             food_name,
@@ -143,7 +174,7 @@ export const BookingProvider = ({ children }) => {
             description
           )
         `)
-        .eq('booking_id', booking.id)
+        .eq('booking_id', booking.id);
 
       if (error) {
         console.error('❌ Lỗi khi tải order items:', error);
@@ -153,7 +184,9 @@ export const BookingProvider = ({ children }) => {
       const items = data || [];
       console.log(`✅ Load được ${items.length} order items cho booking ${booking.id}`);
 
-      setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, order_items: items } : b));
+      setBookings(prev => prev.map(b => 
+        b.id === booking.id ? { ...b, order_items: items } : b
+      ));
 
       if (activeBooking?.id === booking.id) {
         setActiveBooking(prev => ({ ...prev, order_items: items }));
@@ -190,15 +223,82 @@ export const BookingProvider = ({ children }) => {
   };
 
   const createNewBooking = useCallback(async (bookingData) => {
-    if (!user) {
-      console.error('❌ Chưa đăng nhập');
-      return { success: false, error: 'Chưa đăng nhập' };
-    }
-
     try {
       console.log('🔄 Bắt đầu tạo booking với dữ liệu:', bookingData);
       setIsLoading(true);
       setError(null);
+
+      if (bookingData && bookingData.id) {
+        console.log('📥 Đã có booking từ server, đăng ký vào context');
+
+        try {
+          const { data: fetched, error: fetchErr } = await supabase
+            .from('bookings')
+            .select(`
+              *,
+              restaurants:restaurant_id (id, name, cuisine_type, image_url),
+              tables:table_id (id, table_name, capacity, status),
+              order_items (id, food_id, quantity, price_at_time)
+            `)
+            .eq('id', bookingData.id)
+            .single();
+
+          if (fetchErr || !fetched) {
+            const serverBooking = {
+              ...bookingData,
+              user_id: user?.id || bookingData.user_id,
+              restaurant_id: bookingData.restaurant_id || bookingData.restaurantId,
+              restaurantName: bookingData.restaurants?.name || bookingData.restaurantName || 'Nhà hàng',
+              table_id: bookingData.table_id || bookingData.tableId || null,
+              tableNumber: bookingData.tables?.table_name || bookingData.tableNumber || 'Bàn không tên',
+              status: 'confirmed',
+              order_items: bookingData.order_items || []
+            };
+
+            setBookings(prev => {
+              const filtered = prev.filter(b => b.id !== serverBooking.id);
+              return [serverBooking, ...filtered];
+            });
+
+            setActiveBooking(serverBooking);
+
+            try {
+              await loadBookings();
+            } catch (e) {
+              console.warn('⚠️ Không thể reload bookings:', e.message || e);
+            }
+
+            setActiveInvoice(null);
+            console.log('✅ Đã đăng ký booking từ server vào context:', serverBooking.id);
+            return { success: true, booking: serverBooking };
+          }
+
+          fetched.order_items = fetched.order_items || [];
+          fetched.status = 'confirmed';
+          setBookings(prev => {
+            const filtered = prev.filter(b => b.id !== fetched.id);
+            return [fetched, ...filtered];
+          });
+          setActiveBooking(fetched);
+          
+          try {
+            await loadBookings();
+          } catch (e) {
+            console.warn('⚠️ Không thể reload bookings:', e.message || e);
+          }
+          
+          setActiveInvoice(null);
+          console.log('✅ Đã đăng ký booking từ server:', fetched.id);
+          return { success: true, booking: fetched };
+        } catch (err) {
+          console.warn('⚠️ Lỗi khi xử lý booking server:', err.message || err);
+        }
+      }
+
+      if (!user) {
+        console.error('❌ Chưa đăng nhập');
+        return { success: false, error: 'Chưa đăng nhập' };
+      }
 
       if (!bookingData.restaurant_id && !bookingData.restaurantId) {
         console.error('❌ Thiếu restaurant_id');
@@ -253,7 +353,6 @@ export const BookingProvider = ({ children }) => {
 
       if (bookingResult.success) {
         const savedBooking = bookingResult.data;
-
         savedBooking.order_items = [];
 
         setBookings(prev => [savedBooking, ...prev]);
@@ -264,7 +363,8 @@ export const BookingProvider = ({ children }) => {
         } catch (e) {
           console.warn('⚠️ Không thể reload bookings sau khi tạo booking:', e.message || e);
         }
-        setActiveInvoice(null); 
+        
+        setActiveInvoice(null);
 
         console.log('✅ Tạo booking thành công:', savedBooking.id);
         return { success: true, booking: savedBooking };
@@ -279,11 +379,11 @@ export const BookingProvider = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, loadBookings]);
 
   const addOrderItemToBooking = useCallback(async (orderItemData) => {
-    if (!activeBooking) {
-      console.error('❌ Không có booking active');
+    if (!activeBooking || !activeBooking.id) {
+      console.error('❌ Không có booking active hoặc booking không có id');
       return { success: false, error: 'Không có booking active' };
     }
 
@@ -337,8 +437,8 @@ export const BookingProvider = ({ children }) => {
   }, [activeBooking]);
 
   const addMultipleOrderItemsToBooking = useCallback(async (items) => {
-    if (!activeBooking) {
-      console.error('❌ Không có booking active');
+    if (!activeBooking || !activeBooking.id) {
+      console.error('❌ Không có booking active hoặc booking không có id');
       return { success: false, error: 'Không có booking active' };
     }
 
@@ -369,7 +469,7 @@ export const BookingProvider = ({ children }) => {
         return { success: false, error: insertError.message };
       }
 
-      console.log(`✅ Đã thêm ${ (addedItems || []).length } order items`);
+      console.log(`✅ Đã thêm ${(addedItems || []).length} order items`);
 
       const loadedItems = await loadOrderItemsForBooking(activeBooking) || [];
 
@@ -398,12 +498,17 @@ export const BookingProvider = ({ children }) => {
   }, [activeBooking]);
 
   const calculateBookingOrderTotal = useCallback(async (bookingId) => {
-    if (!bookingId) return { total: 0, items: [] };
+    if (!bookingId) {
+      console.warn('⚠️ calculateBookingOrderTotal: bookingId không hợp lệ');
+      return { total: 0, items: [] };
+    }
 
     try {
       const { data, error } = await supabase
         .from('order_items')
         .select(`
+          quantity,
+          price_at_time,
           menus:food_id (
             id,
             price
@@ -431,7 +536,7 @@ export const BookingProvider = ({ children }) => {
   }, []);
 
   const createInvoiceForBooking = useCallback(async () => {
-    if (!activeBooking || !user) {
+    if (!activeBooking || !activeBooking.id || !user) {
       return { success: false, error: 'Không có booking active hoặc chưa đăng nhập' };
     }
 
@@ -456,14 +561,23 @@ export const BookingProvider = ({ children }) => {
       const result = await createInvoiceFromBooking(activeBooking.id, invoiceData);
 
       if (result.success) {
-        setActiveInvoice(result.data);
-        console.log('✅ Tạo invoice thành công:', result.data.invoice_number);
+        // KIỂM TRA result.data CÓ ID KHÔNG
+        if (result.data && result.data.id) {
+          setActiveInvoice(result.data);
+          console.log('✅ Tạo invoice thành công:', result.data.invoice_number);
 
-        return {
-          success: true,
-          invoice: result.data,
-          message: `Đã tạo hóa đơn ${result.data.invoice_number}`
-        };
+          return {
+            success: true,
+            invoice: result.data,
+            message: `Đã tạo hóa đơn ${result.data.invoice_number}`
+          };
+        } else {
+          console.error('❌ Invoice được tạo nhưng không có id:', result.data);
+          return { 
+            success: false, 
+            error: 'Invoice được tạo nhưng không hợp lệ (thiếu ID)' 
+          };
+        }
       } else {
         return { success: false, error: result.error };
       }
@@ -477,7 +591,10 @@ export const BookingProvider = ({ children }) => {
   }, [activeBooking, user, calculateBookingOrderTotal]);
 
   const payOrder = useCallback(async (paymentData, options = {}) => {
-    if (!activeBooking || !user) {
+    console.log('💰 payOrder được gọi với:', { paymentData, options });
+    
+    if (!activeBooking || !activeBooking.id || !user) {
+      console.error('❌ Không có booking active hoặc chưa đăng nhập');
       return { success: false, error: 'Không có booking active hoặc chưa đăng nhập' };
     }
 
@@ -492,18 +609,37 @@ export const BookingProvider = ({ children }) => {
       setError(null);
 
       let currentInvoice = activeInvoice;
-      if (!currentInvoice) {
-        console.log('ℹ️ Chưa có invoice, tạo invoice mới');
+      
+      // KIỂM TRA invoice CÓ ID HỢP LỆ KHÔNG
+      if (!currentInvoice || !currentInvoice.id) {
+        console.log('ℹ️ Chưa có invoice hoặc invoice không hợp lệ, tạo invoice mới');
         const invoiceResult = await createInvoiceForBooking();
+        
         if (!invoiceResult.success) {
+          console.error('❌ Lỗi tạo invoice:', invoiceResult.error);
           return { success: false, error: invoiceResult.error };
         }
+        
         currentInvoice = invoiceResult.invoice;
+        console.log('✅ Đã tạo invoice mới:', currentInvoice?.id);
       }
+
+      // KIỂM TRA LẠI invoice SAU KHI TẠO
+      if (!currentInvoice || !currentInvoice.id) {
+        console.error('❌ Không có invoice hợp lệ để thanh toán:', currentInvoice);
+        return { success: false, error: 'Không có hóa đơn hợp lệ để thanh toán' };
+      }
+
+      console.log('📄 Invoice sẽ thanh toán:', {
+        id: currentInvoice.id,
+        invoice_number: currentInvoice.invoice_number,
+        final_amount: currentInvoice.final_amount
+      });
 
       const amountToPay = paymentData.amount_actual || currentInvoice.final_amount || 0;
 
       if (amountToPay <= 0) {
+        console.error('❌ Số tiền thanh toán không hợp lệ:', amountToPay);
         return { success: false, error: 'Số tiền thanh toán không hợp lệ' };
       }
 
@@ -514,6 +650,7 @@ export const BookingProvider = ({ children }) => {
       };
 
       let result;
+      console.log('🔄 Bắt đầu quá trình thanh toán...');
 
       if (completeBooking) {
         console.log('💳 Thanh toán và kết thúc booking');
@@ -523,32 +660,44 @@ export const BookingProvider = ({ children }) => {
         result = await payInvoice(currentInvoice.id, paymentPayload);
       }
 
-      if (result.success) {
-        setActiveInvoice(result.data.invoice);
+      console.log('📊 Kết quả thanh toán:', result);
 
+      if (result.success) {
+        // Cập nhật invoice mới
+        if (result.data && result.data.invoice) {
+          setActiveInvoice(result.data.invoice);
+          console.log('✅ Cập nhật active invoice sau thanh toán');
+        }
+
+        // Xóa cart nếu cần
         if (typeof clearCart === 'function' && completeBooking) {
+          console.log('🧹 Xóa giỏ hàng sau khi thanh toán');
           clearCart();
         }
 
+        // Load lại dữ liệu
         if (completeBooking) {
+          console.log('🔄 Load lại bookings sau khi hoàn thành');
           await loadBookings();
         } else {
+          console.log('🔄 Load lại order items và invoice');
           await loadOrderItemsForBooking(activeBooking);
           await loadInvoiceForBooking(activeBooking.id);
         }
 
         return {
           success: true,
-          invoice: result.data.invoice,
-          payment: result.data.payment,
-          points: result.data.points || 0,
-          message: result.message,
+          invoice: result.data?.invoice,
+          payment: result.data?.payment,
+          points: result.data?.points_added || 0,
+          message: result.message || 'Thanh toán thành công',
         };
       } else {
+        console.error('❌ Thanh toán thất bại:', result.error);
         return { success: false, error: result.error };
       }
     } catch (error) {
-      console.error('Pay order error:', error);
+      console.error('❌ Lỗi trong payOrder:', error);
       setError(error.message);
       return { success: false, error: error.message };
     } finally {
@@ -557,10 +706,18 @@ export const BookingProvider = ({ children }) => {
   }, [activeBooking, user, activeInvoice, createInvoiceForBooking, loadBookings, clearCart]);
 
   const payPartial = useCallback(async (paymentData) => {
-    return payOrder(paymentData, { completeBooking: false, clearOrderItems: false });
+    console.log('💰 payPartial được gọi');
+    return payOrder(paymentData, { 
+      completeBooking: false, 
+      clearOrderItems: false 
+    });
   }, [payOrder]);
 
   const completeBooking = useCallback(async (bookingId) => {
+    if (!bookingId) {
+      return { success: false, error: 'Thiếu bookingId' };
+    }
+
     try {
       console.log('🔄 Kết thúc booking:', bookingId);
       setIsLoading(true);
@@ -573,7 +730,13 @@ export const BookingProvider = ({ children }) => {
       const result = await updateBooking(bookingId, updateData);
       if (result.success) {
         setBookings(prev => prev.filter(b => b.id !== bookingId));
-        try { await loadBookings(); } catch (e) { /* ignore */ }
+        
+        try { 
+          await loadBookings(); 
+        } catch (e) { 
+          console.warn('⚠️ Không thể reload bookings:', e.message || e);
+        }
+        
         if (activeBooking?.id === bookingId) {
           console.log('✅ Đã kết thúc active booking');
           setActiveBooking(null);
@@ -596,95 +759,76 @@ export const BookingProvider = ({ children }) => {
   }, [loadBookings, activeBooking]);
 
   const cancelBooking = useCallback(async (bookingId) => {
+    if (!bookingId) {
+      return { success: false, error: 'Thiếu bookingId' };
+    }
+
     try {
-      console.log('🔄 Hủy booking:', bookingId);
+      console.log('🔄 Hủy booking (xóa dữ liệu):', bookingId);
       setIsLoading(true);
       setError(null);
 
-      const invoiceRes = await getInvoiceByBookingId(bookingId);
-      if (!invoiceRes.success) {
-        console.warn('⚠️ Không thể kiểm tra invoice trước khi hủy:', invoiceRes.error);
+      const { data: bookingRow, error: bookingRowErr } = await supabase
+        .from('bookings')
+        .select('table_id')
+        .eq('id', bookingId)
+        .single();
+
+      if (bookingRowErr) {
+        console.warn('⚠️ Không tìm thấy booking trước khi xóa:', bookingRowErr.message || bookingRowErr);
       }
 
-      const invoice = invoiceRes.success ? invoiceRes.data : null;
-
-      const { items = [] } = await calculateBookingOrderTotal(bookingId) || { items: [] };
-
-      if (invoice && (invoice.payment_status !== 'paid')) {
-        const remaining = (Number(invoice.final_amount || 0) - Number(invoice.paid_amount || 0)) || 0;
-        if (remaining > 0) {
-          const msg = ' bạn còn đơn hàng chưa thanh toán không thể hủy';
-          console.warn('⚠️ Hủy bị chặn:', msg);
-          return { success: false, error: msg };
-        }
+      try {
+        const { error: delItemsErr } = await supabase
+          .from('order_items')
+          .delete()
+          .eq('booking_id', bookingId);
+        if (delItemsErr) console.warn('⚠️ Không thể xóa order_items:', delItemsErr.message || delItemsErr);
+      } catch (e) {
+        console.warn('⚠️ Lỗi khi xóa order_items:', e.message || e);
       }
 
-      if (!items || items.length === 0) {
-        try {
-          if (invoice && invoice.id) {
-            const { error: invDelErr } = await supabase
-              .from('invoices')
-              .delete()
-              .eq('id', invoice.id);
-            if (invDelErr) console.warn('⚠️ Không thể xóa invoice:', invDelErr.message || invDelErr);
-          }
-
-          const { data: bookingRow, error: bookingRowErr } = await supabase
-            .from('bookings')
-            .select('table_id')
-            .eq('id', bookingId)
-            .single();
-
-          const { error: bkDelErr } = await supabase
-            .from('bookings')
+      try {
+        const invoiceRes = await getInvoiceByBookingId(bookingId);
+        if (invoiceRes.success && invoiceRes.data && invoiceRes.data.id) {
+          const { error: invDelErr } = await supabase
+            .from('invoices')
             .delete()
-            .eq('id', bookingId);
-
-          if (bkDelErr) {
-            console.error('❌ Lỗi xóa booking:', bkDelErr);
-            throw new Error(bkDelErr.message || String(bkDelErr));
-          }
-
-          if (!bookingRowErr && bookingRow && bookingRow.table_id) {
-            const res = await setTableStatusSafe(bookingRow.table_id, 'available');
-            if (!res.success) console.warn('⚠️ Không thể cập nhật trạng thái bàn sau khi xóa booking:', res.error);
-          }
-
-          setBookings(prev => prev.filter(b => b.id !== bookingId));
-          if (activeBooking?.id === bookingId) {
-            setActiveBooking(null);
-            setActiveInvoice(null);
-          }
-
-          try { await loadBookings(); } catch (e) { /* ignore */ }
-
-          return { success: true };
-        } catch (err) {
-          console.error('❌ Lỗi khi xóa booking rỗng:', err);
-          return { success: false, error: err.message || String(err) };
+            .eq('id', invoiceRes.data.id);
+          if (invDelErr) console.warn('⚠️ Không thể xóa invoice:', invDelErr.message || invDelErr);
         }
+      } catch (e) {
+        console.warn('⚠️ Lỗi khi xóa invoice:', e.message || e);
       }
 
-      const updateData = {
-        status: 'cancelled',
-        cancelled_at: new Date().toISOString()
-      };
+      const { error: bkDelErr } = await supabase
+        .from('bookings')
+        .delete()
+        .eq('id', bookingId);
 
-      const result = await updateBooking(bookingId, updateData);
-      if (result.success) {
-        setBookings(prev => prev.filter(b => b.id !== bookingId));
-        try { await loadBookings(); } catch (e) { /* ignore */ }
-        if (activeBooking?.id === bookingId) {
-          console.log('✅ Đã hủy active booking');
-          setActiveBooking(null);
-          setActiveInvoice(null);
-        }
-      } else {
-        console.error('❌ Lỗi cập nhật booking:', result.error);
-        throw new Error(result.error);
+      if (bkDelErr) {
+        console.error('❌ Lỗi xóa booking:', bkDelErr);
+        throw new Error(bkDelErr.message || String(bkDelErr));
       }
 
-      console.log('✅ Hủy booking thành công');
+      if (!bookingRowErr && bookingRow && bookingRow.table_id) {
+        const res = await setTableStatusSafe(bookingRow.table_id, 'available');
+        if (!res.success) console.warn('⚠️ Không thể cập nhật trạng thái bàn sau khi xóa booking:', res.error);
+      }
+
+      setBookings(prev => prev.filter(b => b.id !== bookingId));
+      if (activeBooking?.id === bookingId) {
+        setActiveBooking(null);
+        setActiveInvoice(null);
+      }
+
+      try { 
+        await loadBookings(); 
+      } catch (e) { 
+        console.warn('⚠️ Không thể reload bookings:', e.message || e);
+      }
+
+      console.log('✅ Đã xóa booking và khôi phục trạng thái bàn');
       return { success: true };
     } catch (error) {
       console.error('❌ Lỗi khi hủy booking:', error);
@@ -692,11 +836,11 @@ export const BookingProvider = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [loadBookings, activeBooking, calculateBookingOrderTotal]);
+  }, [loadBookings, activeBooking]);
 
   const removeOrderItem = useCallback(async (orderItemId) => {
-    if (!activeBooking) {
-      console.error('❌ Không có booking active');
+    if (!activeBooking || !activeBooking.id) {
+      console.error('❌ Không có booking active hoặc booking không có id');
       return { success: false, error: 'Không có booking active' };
     }
 
@@ -717,14 +861,14 @@ export const BookingProvider = ({ children }) => {
 
       await loadOrderItemsForBooking(activeBooking);
 
-        try {
-          const { total } = await calculateBookingOrderTotal(activeBooking.id);
-          await upsertInvoiceSubTotal(activeBooking.id, total);
-        } catch (syncErr) {
-          console.warn('⚠️ Lỗi khi gửi sub_total sau khi xóa item:', syncErr.message || syncErr);
-        }
+      try {
+        const { total } = await calculateBookingOrderTotal(activeBooking.id);
+        await upsertInvoiceSubTotal(activeBooking.id, total);
+      } catch (syncErr) {
+        console.warn('⚠️ Lỗi khi gửi sub_total sau khi xóa item:', syncErr.message || syncErr);
+      }
 
-        await loadInvoiceForBooking(activeBooking.id);
+      await loadInvoiceForBooking(activeBooking.id);
 
       console.log('✅ Đã xóa order item thành công');
 
@@ -742,7 +886,7 @@ export const BookingProvider = ({ children }) => {
   }, [activeBooking]);
 
   const getActiveBookingForRestaurant = useCallback(async (restaurantId) => {
-    if (!user) {
+    if (!user || !user.id) {
       console.error('❌ Không có user');
       return null;
     }
@@ -757,7 +901,9 @@ export const BookingProvider = ({ children }) => {
       return result.data;
     }
 
-    const booking = bookings.find(b => b.restaurant_id === restaurantId && b.status === 'confirmed');
+    const booking = bookings.find(b => 
+      b.restaurant_id === restaurantId && b.status === 'confirmed'
+    );
     if (booking) {
       console.log('✅ Tìm thấy active booking trong cache');
       return booking;
@@ -769,7 +915,9 @@ export const BookingProvider = ({ children }) => {
 
   const hasActiveBooking = useCallback((restaurantId = null) => {
     if (restaurantId) {
-      return bookings.some(b => b.restaurant_id === restaurantId && b.status === 'confirmed');
+      return bookings.some(b => 
+        b.restaurant_id === restaurantId && b.status === 'confirmed'
+      );
     }
 
     return bookings.some(b => b.status === 'confirmed');
@@ -811,8 +959,9 @@ export const BookingProvider = ({ children }) => {
   }, [activeInvoice]);
 
   const isValidUUID = (uuid) => {
+    if (!uuid) return false;
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return uuid && uuidRegex.test(uuid);
+    return uuidRegex.test(uuid);
   };
 
   const value = {

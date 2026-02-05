@@ -24,6 +24,9 @@ const OrderScreen = ({ navigation, route }) => {
 
   const [invoice, setInvoice] = useState(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
+  
+  // THÊM STATE ĐỂ DEBUG
+  const [debugInfo, setDebugInfo] = useState('');
 
   const {
     orders,
@@ -51,6 +54,26 @@ const OrderScreen = ({ navigation, route }) => {
       setInvoice(null);
     }
   }, [activeBooking]);
+
+  // THÊM useEffect ĐỂ DEBUG
+  useEffect(() => {
+    console.log('🔍 OrderScreen - activeBooking:', activeBooking);
+    console.log('🔍 OrderScreen - activeBooking status:', activeBooking?.status);
+    console.log('🔍 OrderScreen - orders count:', orders?.length);
+    
+    // CẬP NHẬT DEBUG INFO
+    if (activeBooking) {
+      setDebugInfo(`
+        Booking ID: ${activeBooking.id}
+        Status: ${activeBooking.status}
+        Restaurant: ${activeBooking.restaurants?.name || 'N/A'}
+        Table: ${activeBooking.tables?.table_name || 'N/A'}
+        Orders: ${orders?.length}
+      `);
+    } else {
+      setDebugInfo('Không có active booking');
+    }
+  }, [activeBooking, orders]);
 
   const loadInvoice = async () => {
     if (!activeBooking) return;
