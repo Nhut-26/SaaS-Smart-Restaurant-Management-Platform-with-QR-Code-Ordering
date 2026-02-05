@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 8000
 
 # 6. Sửa lệnh chạy: Dùng "python -m uvicorn" để đảm bảo chạy đúng môi trường
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "main:asgi_app", "--host", "0.0.0.0", "--port", "8000"]

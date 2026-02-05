@@ -27,7 +27,7 @@ async function checkAuth() {
     const { data: { session } } = await db.auth.getSession();
 
     if (!session) {
-        window.location.href = "../Login/login.html";
+        window.location.href = "../Login/loginAdmin.html";
 
         return;
     }

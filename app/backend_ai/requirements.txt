@@ -6,3 +6,10 @@ supabase
 groq
 requests
 httpx
+Flask
+Flask-Cors
+gunicorn
+asgiref
+
+
+

@@ -29,9 +29,54 @@ import { BookingProvider } from './src/context/BookingContext';
 import { ChatBotProvider } from './src/context/ChatBotContext';
 
 import { testConnection } from './src/config/supabase';
+import axios from 'axios';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// Thay địa chỉ IP này bằng IP máy tính của bạn (Dùng lệnh ipconfig/ifconfig)
+const BASE_URL = 'http://192.168.1.14:8000/chat'; // <-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+const apiClient = axios.create({
+    baseURL: BASE_URL,
+    timeout: 60000, // 60 giây nếu AI không phản hồi sẽ báo lỗi
+});
+
+
+const sendMessageToAI = async (userMessage) => {
+    try {
+
+
+
+        const response = await fetch('http://192.168.1.14:8000/chat', { // Thay localhost bằng IP máy nếu chạy trên thiết bị thật ------------------------------------------------------------------------------------------------------
+
+
+
+
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                user_id: user_id, // Lấy từ Supabase Auth ******
+                message: userMessage,
+                current_screen: currentScreen,
+                current_restaurant_id: selectedRestaurantId,
+                lat: userLocation.lat, // Lấy từ Expo Location
+                lng: userLocation.lng
+            }),
+        });
+
+        const data = await response.json();
+        return data.reply; // Đây là câu trả lời đã được AI xử lý xong
+    } catch (error) {
+        console.error("Lỗi kết nối AI:", error);
+        return "Xin lỗi, mình đang bận một chút, bạn thử lại sau nhé!";
+    }
+};
+
+
 
 function CustomerTabs() {
   return (

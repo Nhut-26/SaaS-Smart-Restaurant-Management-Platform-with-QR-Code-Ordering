@@ -170,7 +170,7 @@ document.getElementById('form-register').addEventListener('submit', async (e) =>
     } else {
         showToast("Thêm nhà hàng thành công! Đang chuyển hướng...", "success");
         setTimeout(() => {
-            window.location.href = "../Manager/index.html";
+            window.location.href = "../Manager/manager.html";
         }, 1500);
     }
 });
@@ -220,5 +220,5 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
     localStorage.setItem('restaurantInfo', JSON.stringify(userInfo));
     
     showToast("Đăng nhập thành công!", "success");
-    setTimeout(() => { window.location.href = "../Manager/index.html"; }, 1000);
+    setTimeout(() => { window.location.href = "../Manager/manager.html"; }, 1000);
 });

@@ -82,7 +82,7 @@ class FoodChatAgent:
                     return {"plan": "plus", "delay": 2.5, "model": "llama-3.3-70b-versatile"}
                 
                 else: # basic hoặc free - GPT 1 - Chậm (5s)
-                    return {"plan": "basic", "delay": 5, "model": "llama-3.1-8b-instant"} 
+                    return {"plan": "basic", "delay": 5, "model": "llama-3.3-70b-versatile"} 
                     # Mẹo: Gói thấp dùng model 8b (nhẹ hơn/kém thông minh hơn xíu) để phân cấp rõ hơn
             
             return default_config
@@ -228,6 +228,7 @@ class FoodChatAgent:
                 "user_id": str(user_id),
                 "restaurant_id": str(rest_id),
                 "table_id": str(real_table_id),
+                "status": "pending",
                 "booking_time": final_timestamp,
                 "people_count": int(info['people']) if info['people'] else 2,
                 "customer_name": info['name'],
@@ -564,3 +565,4 @@ class FoodChatAgent:
                 return {"reply": chat.choices[0].message.content, "intent": "SUPPORT"}
             except:
                 return {"reply": "Mình chưa hiểu ý bạn lắm.", "intent": "SUPPORT"}
+

@@ -1,10 +1,12 @@
 fastapi
 uvicorn
+gunicorn
 python-dotenv
 supabase
 jinja2
 python-multipart
 qrcode[pil]
 requests
+httpx
 starlette
 itsdangerous
